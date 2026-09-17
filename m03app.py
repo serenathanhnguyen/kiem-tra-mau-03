@@ -1,27 +1,85 @@
-import streamlit as st
+from io import BytesIO
+
 import pandas as pd
+import streamlit as st
 
-st.set_page_config(
-    page_title="Kiểm tra Mẫu 03 Medinet",
-    page_icon="📋",
-    layout="wide"
+from validators import validate_workbook, SHEET_MAIN
+
+st.set_page_config(page_title="Kiểm tra file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
+st.title("✅ Kiểm tra file Excel Mẫu 03 (KSKDK) trước khi nhập Medinet")
+st.caption(
+    "Tải lên file Excel dữ liệu bệnh nhân (đúng cấu trúc file mẫu Medinet — sheet "
+    f"**{SHEET_MAIN}**, dòng 2 là nhãn, dòng 4 là mã field, dữ liệu từ dòng 5). "
+    "Công cụ sẽ kiểm tra định dạng, ô bắt buộc, khớp danh mục (Tỉnh/Phường xã, Nghề nghiệp, "
+    "Nơi công tác, Đối tượng khám...), CCCD trùng, và khoảng trắng ẩn."
 )
 
-st.title("KIỂM TRA FILE MẪU 03 MEDINET")
+uploaded = st.file_uploader("Chọn file Excel (.xlsx)", type=["xlsx"])
 
-st.write(
-    "Công cụ kiểm tra dữ liệu Excel M03 trước khi nhập lên hệ thống Medinet."
-)
+if uploaded is not None:
+    try:
+        with st.spinner("Đang kiểm tra..."):
+            issues_df, structural_notes, n_rows_checked, col_defs = validate_workbook(uploaded.getvalue())
+    except Exception as e:
+        st.error(f"Không đọc được file: {e}")
+        st.stop()
 
-uploaded_file = st.file_uploader(
-    "Chọn file Excel M03",
-    type=["xlsx", "xls"]
-)
+    n_errors = int((issues_df["Mức độ"] == "Lỗi").sum()) if not issues_df.empty else 0
+    n_warnings = int((issues_df["Mức độ"] == "Cảnh báo").sum()) if not issues_df.empty else 0
+    n_bad_rows = issues_df.loc[issues_df["Mức độ"] == "Lỗi", "Dòng Excel"].nunique() if not issues_df.empty else 0
 
-if uploaded_file is not None:
-    st.success("Đã nhận file Excel.")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Số dòng đã kiểm tra", n_rows_checked)
+    c2.metric("Số lỗi", n_errors)
+    c3.metric("Số cảnh báo", n_warnings)
+    c4.metric("Số dòng có lỗi", n_bad_rows)
 
-    excel = pd.ExcelFile(uploaded_file)
+    if structural_notes:
+        with st.expander("⚠ Ghi chú về cấu trúc file (dòng nhãn/mã)", expanded=True):
+            for note in structural_notes:
+                st.warning(note)
 
-    st.write("Các sheet có trong file:")
-    st.write(excel.sheet_names)
+    if issues_df.empty:
+        st.success("Không phát hiện lỗi hay cảnh báo nào. 🎉")
+    else:
+        tab1, tab2 = st.tabs(["🔴 Lỗi (chặn nhập liệu)", "🟡 Cảnh báo (nên xem lại)"])
+        with tab1:
+            df_err = issues_df[issues_df["Mức độ"] == "Lỗi"].drop(columns=["Mức độ"])
+            st.dataframe(df_err, use_container_width=True, hide_index=True)
+        with tab2:
+            df_warn = issues_df[issues_df["Mức độ"] == "Cảnh báo"].drop(columns=["Mức độ"])
+            st.dataframe(df_warn, use_container_width=True, hide_index=True)
+
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            issues_df.to_excel(writer, index=False, sheet_name="Ket_qua_kiem_tra")
+        st.download_button(
+            "⬇ Tải báo cáo lỗi (Excel)",
+            data=buf.getvalue(),
+            file_name="bao_cao_kiem_tra_mau03.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
+    st.markdown(
+        """
+- **Ô bắt buộc** (nhãn có dấu `*`) không được để trống.
+- **Ngày tháng** (`ngay_kham`, `ngay_sinh`) đúng định dạng `dd/MM/yyyy`.
+- **CCCD** đủ 12 chữ số, và **không trùng** với dòng khác trong cùng file.
+- **Số điện thoại** đúng dạng số Việt Nam thông thường (cảnh báo, không chặn).
+- **Các ô chọn 1 giá trị cố định**: giới tính, nhóm máu, yếu tố Rh, loại khám, phân loại thể lực (1-5),
+  các ô "Chưa phát hiện bất thường" (0/1), các câu tiền sử bệnh Có/Không...
+- **Mã ICD**: kiểm tra định dạng giống ICD-10 (cảnh báo nếu lạ, không có danh mục đầy đủ để đối chiếu).
+- **Các ô số** (chiều cao, cân nặng, mạch, huyết áp, xét nghiệm...) phải là số hợp lệ.
+- **Khớp danh mục chặt**: Đối tượng khám, Tỉnh, Phường/Xã (đối chiếu Phường/Xã có thuộc đúng Tỉnh),
+  Nghề nghiệp, Nơi công tác, Bệnh tiền sử gia đình — đối chiếu với các sheet danh mục có trong
+  chính file Excel (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`).
+- **Khoảng trắng ẩn** (dấu cách không ngắt `\\xa0`, ký tự rộng-0...) trong bất kỳ ô chữ nào — dấu vết
+  hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác.
+- **Cấu trúc file**: phát hiện nếu 2 cột vô tình dùng trùng 1 mã field (lỗi hiếm gặp trong file gốc).
+
+Công cụ **không** kiểm tra: nội dung mô tả tự do (ghi chú, mô tả lâm sàng), và không có danh mục
+đầy đủ cho Dân tộc / Hình thức chi trả nên các ô đó chỉ được kiểm tra "có dữ liệu hay không", không
+đối chiếu danh mục.
+        """
+    )
