@@ -70,10 +70,23 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
 - **Các ô chọn 1 giá trị cố định**: giới tính, nhóm máu, yếu tố Rh, loại khám, phân loại thể lực (1-5),
   các ô "Chưa phát hiện bất thường" (0/1), các câu tiền sử bệnh Có/Không...
 - **Mã ICD**: kiểm tra định dạng giống ICD-10 (cảnh báo nếu lạ, không có danh mục đầy đủ để đối chiếu).
-- **Các ô số** (chiều cao, cân nặng, mạch, huyết áp, xét nghiệm...) phải là số hợp lệ.
+- **Các ô số** (chiều cao, cân nặng, mạch, huyết áp, xét nghiệm...) phải là số hợp lệ, và nếu nhập
+  dạng chữ thì **phần thập phân phải dùng dấu phẩy (,)** — dấu chấm (.) chỉ chấp nhận khi rõ ràng là
+  phân cách hàng nghìn của số nguyên, còn lại bị coi là sai định dạng theo đúng chuẩn Medinet.
 - **Khớp danh mục chặt**: Đối tượng khám, Tỉnh, Phường/Xã (đối chiếu Phường/Xã có thuộc đúng Tỉnh),
   Nghề nghiệp, Nơi công tác, Bệnh tiền sử gia đình — đối chiếu với các sheet danh mục có trong
   chính file Excel (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`).
+- **Ô Kết luận (`danh_muc_de_nghi`)** phải là 1 trong 5 giá trị cố định (Bình thường hẹn khám định kỳ /
+  Có yếu tố nguy cơ / Đã có bệnh mạn tính / Chuyển tuyến / Khác).
+- **13 khối chuyên khoa ở tab Khám lâm sàng** (4 ô: chưa phát hiện bất thường / chẩn đoán sơ bộ /
+  chẩn đoán xác định / phân loại): chọn "chưa phát hiện bất thường" thì không được có ICD và phân
+  loại phải là Loại 1; có ICD (sơ bộ hoặc xác định) thì phân loại phải từ Loại 2 trở lên; ô phân
+  loại không được để trống.
+- **Sản khoa / Phụ khoa** (có thêm ô "từ chối khám" ở đầu): nếu chọn "từ chối khám" thì không bắt
+  buộc chọn phân loại; nếu không từ chối khám thì áp dụng đúng quy tắc 4 ô như các khối chuyên khoa
+  khác ở trên.
+- **Giới tính Nam**: cảnh báo nếu vẫn có dữ liệu ở các ô chỉ dành cho nữ (tiền sử thai sản, toàn bộ
+  khối Sản khoa/Phụ khoa).
 - **Khoảng trắng ẩn** (dấu cách không ngắt `\\xa0`, ký tự rộng-0...) trong bất kỳ ô chữ nào — dấu vết
   hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác.
 - **Cấu trúc file**: phát hiện nếu 2 cột vô tình dùng trùng 1 mã field (lỗi hiếm gặp trong file gốc).
