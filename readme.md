@@ -7,18 +7,23 @@ Nơi công tác, Đối tượng khám...), khoảng trắng ẩn trong chữ...
 
 ## File trong repo
 
-- `app.py` — giao diện Streamlit (upload file, hiển thị kết quả).
+- `m03app.py` — giao diện Streamlit (upload file, hiển thị kết quả).
 - `validators.py` — toàn bộ logic kiểm tra (không phụ thuộc Streamlit, có thể test riêng).
 - `requirements.txt` — danh sách thư viện cần cài khi deploy.
+
+> ⚠ **Tên file phải viết đúng chữ thường `validators.py`.** Trong `m03app.py` có dòng
+> `from validators import ...` — máy chủ Streamlit Cloud chạy Linux, phân biệt chữ hoa/thường, nên
+> nếu file bị đặt tên `Validators.py` (V hoa) app sẽ báo lỗi `ModuleNotFoundError` và không chạy được,
+> dù bạn tự thử trên Windows/Mac vẫn thấy bình thường (2 hệ đó không phân biệt hoa/thường).
 
 ## Đưa lên GitHub
 
 1. Vào https://github.com → **New repository** (nút xanh "New" hoặc dấu **+** góc trên phải).
-2. Đặt tên, ví dụ `mau03-excel-checker`. Chọn **Public** (Streamlit Cloud miễn phí cần repo public,
-   trừ khi tài khoản Streamlit của bạn có gói trả phí). Không cần tick "Add a README" vì mình đã có.
+2. Đặt tên repo. Chọn **Public** (Streamlit Cloud miễn phí cần repo public, trừ khi tài khoản
+   Streamlit của bạn có gói trả phí). Không cần tick "Add a README" nếu đã có sẵn.
 3. Bấm **Create repository**.
 4. Ở trang repo vừa tạo, bấm **"uploading an existing file"** (hoặc **Add file → Upload files**).
-5. Kéo thả (hoặc chọn) cả 3 file `app.py`, `validators.py`, `requirements.txt` vào, rồi bấm
+5. Kéo thả (hoặc chọn) cả 3 file `m03app.py`, `validators.py`, `requirements.txt` vào, rồi bấm
    **Commit changes**.
 
 *(Nếu bạn quen dùng GitHub Desktop hoặc git dòng lệnh như các app trước, làm theo cách cũ cũng
@@ -30,9 +35,9 @@ Nơi công tác, Đối tượng khám...), khoảng trắng ẩn trong chữ...
    app trước — sales-dashboard, tyt-nhieu-loc-tools...).
 2. Bấm **Create app** (hoặc **New app**).
 3. Chọn **"Deploy a public app from GitHub"**, sau đó chọn:
-   - **Repository**: `<tên-tài-khoản>/mau03-excel-checker`
+   - **Repository**: `<tên-tài-khoản>/<tên-repo>`
    - **Branch**: `main`
-   - **Main file path**: `app.py`
+   - **Main file path**: `m03app.py`
 4. Bấm **Deploy**. Chờ khoảng 1–2 phút để Streamlit cài thư viện và khởi động app.
 5. Xong sẽ có 1 link dạng `https://<tên-app>.streamlit.app` — dùng link này để mở công cụ mọi lúc,
    không cần cài gì trên máy.
