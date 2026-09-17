@@ -3,141 +3,96 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from validators import validate_workbook
+from validators import validate_workbook, SHEET_MAIN
 
-
-st.set_page_config(
-    page_title="Kiểm tra Mẫu 03 Medinet",
-    page_icon="📋",
-    layout="wide",
+st.set_page_config(page_title="Kiểm tra file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
+st.title("✅ Kiểm tra file Excel Mẫu 03 (KSKDK) trước khi nhập Medinet")
+st.caption(
+    "Tải lên file Excel dữ liệu bệnh nhân (đúng cấu trúc file mẫu Medinet — sheet "
+    f"**{SHEET_MAIN}**, dòng 2 là nhãn, dòng 4 là mã field, dữ liệu từ dòng 5). "
+    "Công cụ sẽ kiểm tra định dạng, ô bắt buộc, khớp danh mục (Tỉnh/Phường xã, Nghề nghiệp, "
+    "Nơi công tác, Đối tượng khám...), CCCD trùng, và khoảng trắng ẩn."
 )
 
+uploaded = st.file_uploader("Chọn file Excel (.xlsx)", type=["xlsx"])
 
-def make_report(issues_df, structural_notes, rows_checked):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        if issues_df.empty:
-            pd.DataFrame([
-                {
-                    "Kết quả": "Không phát hiện lỗi hoặc cảnh báo",
-                    "Số dòng đã kiểm tra": rows_checked,
-                }
-            ]).to_excel(writer, sheet_name="KET_QUA", index=False)
-        else:
-            issues_df.to_excel(writer, sheet_name="LOI_CHI_TIET", index=False)
+if uploaded is not None:
+    try:
+        with st.spinner("Đang kiểm tra..."):
+            issues_df, structural_notes, n_rows_checked, col_defs = validate_workbook(uploaded.getvalue())
+    except Exception as e:
+        st.error(f"Không đọc được file: {e}")
+        st.stop()
 
-        pd.DataFrame([
-            {
-                "Số dòng đã kiểm tra": rows_checked,
-                "Số lỗi": int((issues_df["Mức độ"] == "Lỗi").sum()) if not issues_df.empty else 0,
-                "Số cảnh báo": int((issues_df["Mức độ"] == "Cảnh báo").sum()) if not issues_df.empty else 0,
-            }
-        ]).to_excel(writer, sheet_name="TONG_HOP", index=False)
+    n_errors = int((issues_df["Mức độ"] == "Lỗi").sum()) if not issues_df.empty else 0
+    n_warnings = int((issues_df["Mức độ"] == "Cảnh báo").sum()) if not issues_df.empty else 0
+    n_bad_rows = issues_df.loc[issues_df["Mức độ"] == "Lỗi", "Dòng Excel"].nunique() if not issues_df.empty else 0
 
-        if structural_notes:
-            pd.DataFrame({"Lưu ý cấu trúc": structural_notes}).to_excel(
-                writer, sheet_name="LUU_Y_CAU_TRUC", index=False
-            )
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Số dòng đã kiểm tra", n_rows_checked)
+    c2.metric("Số lỗi", n_errors)
+    c3.metric("Số cảnh báo", n_warnings)
+    c4.metric("Số dòng có lỗi", n_bad_rows)
 
-        for ws in writer.book.worksheets:
-            ws.freeze_panes = "A2"
-            ws.auto_filter.ref = ws.dimensions
-            for column in ws.columns:
-                width = min(max(len(str(cell.value or "")) for cell in column) + 2, 70)
-                ws.column_dimensions[column[0].column_letter].width = max(width, 12)
+    if structural_notes:
+        with st.expander("⚠ Ghi chú về cấu trúc file (dòng nhãn/mã)", expanded=True):
+            for note in structural_notes:
+                st.warning(note)
 
-    return output.getvalue()
+    if issues_df.empty:
+        st.success("Không phát hiện lỗi hay cảnh báo nào. 🎉")
+    else:
+        tab1, tab2 = st.tabs(["🔴 Lỗi (chặn nhập liệu)", "🟡 Cảnh báo (nên xem lại)"])
+        with tab1:
+            df_err = issues_df[issues_df["Mức độ"] == "Lỗi"].drop(columns=["Mức độ"])
+            st.dataframe(df_err, use_container_width=True, hide_index=True)
+        with tab2:
+            df_warn = issues_df[issues_df["Mức độ"] == "Cảnh báo"].drop(columns=["Mức độ"])
+            st.dataframe(df_warn, use_container_width=True, hide_index=True)
 
+        buf = BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            issues_df.to_excel(writer, index=False, sheet_name="Ket_qua_kiem_tra")
+        st.download_button(
+            "⬇ Tải báo cáo lỗi (Excel)",
+            data=buf.getvalue(),
+            file_name="bao_cao_kiem_tra_mau03.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
-st.title("KIỂM TRA FILE EXCEL MẪU 03 MEDINET")
-st.write(
-    "Tải file Excel Mẫu 03 lên để kiểm tra dữ liệu trước khi nhập vào Medinet. "
-    "Công cụ không sửa dữ liệu trong file gốc."
-)
-
-with st.expander("Công cụ đang kiểm tra những gì?"):
+with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
     st.markdown(
         """
-        - Ô bắt buộc, ngày khám, ngày sinh, CCCD và số điện thoại.
-        - CCCD trùng trong cùng file.
-        - Các giá trị Có/Không, giới tính, nhóm máu, phân loại sức khỏe.
-        - Danh mục tỉnh, phường/xã, nghề nghiệp, nơi công tác và đối tượng khám.
-        - Khoảng trắng ẩn, trường số, dấu thập phân và mã ICD-10.
-        - Logic giữa “chưa phát hiện bất thường”, chẩn đoán ICD và phân loại.
-        - Quy tắc Sản khoa, Phụ khoa theo giới tính và lựa chọn từ chối khám.
+- **Ô bắt buộc** (nhãn có dấu `*`) không được để trống.
+- **Ngày tháng** (`ngay_kham`, `ngay_sinh`) đúng định dạng `dd/MM/yyyy`.
+- **CCCD** đủ 12 chữ số, và **không trùng** với dòng khác trong cùng file.
+- **Số điện thoại** đúng dạng số Việt Nam thông thường (cảnh báo, không chặn).
+- **Các ô chọn 1 giá trị cố định**: giới tính, nhóm máu, yếu tố Rh, loại khám, phân loại thể lực (1-5),
+  các ô "Chưa phát hiện bất thường" (0/1), các câu tiền sử bệnh Có/Không...
+- **Mã ICD**: kiểm tra định dạng giống ICD-10 (cảnh báo nếu lạ, không có danh mục đầy đủ để đối chiếu).
+- **Các ô số** (chiều cao, cân nặng, mạch, huyết áp, xét nghiệm...) phải là số hợp lệ, và nếu nhập
+  dạng chữ thì **phần thập phân phải dùng dấu phẩy (,)** — dấu chấm (.) chỉ chấp nhận khi rõ ràng là
+  phân cách hàng nghìn của số nguyên, còn lại bị coi là sai định dạng theo đúng chuẩn Medinet.
+- **Khớp danh mục chặt**: Đối tượng khám, Tỉnh, Phường/Xã (đối chiếu Phường/Xã có thuộc đúng Tỉnh),
+  Nghề nghiệp, Nơi công tác, Bệnh tiền sử gia đình — đối chiếu với các sheet danh mục có trong
+  chính file Excel (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`).
+- **Ô Kết luận (`danh_muc_de_nghi`)** phải là 1 trong 5 giá trị cố định (Bình thường hẹn khám định kỳ /
+  Có yếu tố nguy cơ / Đã có bệnh mạn tính / Chuyển tuyến / Khác).
+- **13 khối chuyên khoa ở tab Khám lâm sàng** (4 ô: chưa phát hiện bất thường / chẩn đoán sơ bộ /
+  chẩn đoán xác định / phân loại): chọn "chưa phát hiện bất thường" thì không được có ICD và phân
+  loại phải là Loại 1; có ICD (sơ bộ hoặc xác định) thì phân loại phải từ Loại 2 trở lên; ô phân
+  loại không được để trống.
+- **Sản khoa / Phụ khoa** (có thêm ô "từ chối khám" ở đầu): nếu chọn "từ chối khám" thì không bắt
+  buộc chọn phân loại; nếu không từ chối khám thì áp dụng đúng quy tắc 4 ô như các khối chuyên khoa
+  khác ở trên.
+- **Giới tính Nam**: cảnh báo nếu vẫn có dữ liệu ở các ô chỉ dành cho nữ (tiền sử thai sản, toàn bộ
+  khối Sản khoa/Phụ khoa).
+- **Khoảng trắng ẩn** (dấu cách không ngắt `\\xa0`, ký tự rộng-0...) trong bất kỳ ô chữ nào — dấu vết
+  hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác.
+- **Cấu trúc file**: phát hiện nếu 2 cột vô tình dùng trùng 1 mã field (lỗi hiếm gặp trong file gốc).
+
+Công cụ **không** kiểm tra: nội dung mô tả tự do (ghi chú, mô tả lâm sàng), và không có danh mục
+đầy đủ cho Dân tộc / Hình thức chi trả nên các ô đó chỉ được kiểm tra "có dữ liệu hay không", không
+đối chiếu danh mục.
         """
     )
-
-uploaded_file = st.file_uploader(
-    "Chọn file Excel Mẫu 03",
-    type=["xlsx"],
-    help="File phải có sheet ThongTinHanhChinh và các sheet danh mục đi kèm.",
-)
-
-if uploaded_file is None:
-    st.info("Chưa có file được tải lên.")
-else:
-    try:
-        with st.spinner("Đang kiểm tra file..."):
-            issues, structural_notes, rows_checked, _ = validate_workbook(
-                uploaded_file.getvalue()
-            )
-
-        if issues.empty:
-            error_count = 0
-            warning_count = 0
-        else:
-            error_count = int((issues["Mức độ"] == "Lỗi").sum())
-            warning_count = int((issues["Mức độ"] == "Cảnh báo").sum())
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Dòng đã kiểm tra", rows_checked)
-        c2.metric("Lỗi", error_count)
-        c3.metric("Cảnh báo", warning_count)
-
-        if structural_notes:
-            st.warning("Phát hiện lưu ý về cấu trúc file:")
-            for note in structural_notes:
-                st.write(f"- {note}")
-
-        if rows_checked == 0:
-            st.warning("Không tìm thấy hồ sơ dữ liệu từ dòng 5 trở đi.")
-        elif error_count == 0:
-            st.success("Không phát hiện lỗi bắt buộc trong file.")
-        else:
-            st.error(f"Có {error_count} lỗi cần sửa trước khi nhập Medinet.")
-
-        if not issues.empty:
-            tab_errors, tab_warnings, tab_all = st.tabs(
-                ["Lỗi cần sửa", "Cảnh báo", "Tất cả kết quả"]
-            )
-            with tab_errors:
-                error_df = issues[issues["Mức độ"] == "Lỗi"]
-                if error_df.empty:
-                    st.info("Không có lỗi.")
-                else:
-                    st.dataframe(error_df, use_container_width=True, hide_index=True)
-            with tab_warnings:
-                warning_df = issues[issues["Mức độ"] == "Cảnh báo"]
-                if warning_df.empty:
-                    st.info("Không có cảnh báo.")
-                else:
-                    st.dataframe(warning_df, use_container_width=True, hide_index=True)
-            with tab_all:
-                st.dataframe(issues, use_container_width=True, hide_index=True)
-
-        report = make_report(issues, structural_notes, rows_checked)
-        output_name = uploaded_file.name.rsplit(".", 1)[0] + "_BAO_CAO_KIEM_TRA.xlsx"
-        st.download_button(
-            "Tải báo cáo kiểm tra Excel",
-            data=report,
-            file_name=output_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-        )
-    except Exception as exc:
-        st.error("Không thể kiểm tra file Excel này.")
-        st.exception(exc)
-        st.info(
-            "Hãy kiểm tra lại tên sheet ThongTinHanhChinh và bảo đảm file đúng cấu trúc Mẫu 03."
-        )
