@@ -47,9 +47,20 @@ BINARY_01_FIELDS = [
     "dieu_tri_benh_co_khong", "thai_san_co_khong",
 ]
 
-# Các trường số (kết quả cận lâm sàng, chỉ số sinh tồn...) — phải là số
+# Các trường số KHÔNG thuộc cận lâm sàng (chỉ số sinh tồn + thị lực) — kiểm tra đầy đủ:
+# vừa bắt lỗi dấu chấm/phẩy, vừa phải là số hợp lệ.
 NUMERIC_FIELDS = [
     "chieucao", "cannang", "nhiptho", "mach", "huyetaptamthu", "huyetaptamtruong",
+    "mat_khongkinh_mp", "mat_khongkinh_mt", "mat_kinhlo_mp", "mat_kinhlo_mt",
+    "mat_cokinh_mp", "mat_cokinh_mt", "mat_docau_mp", "mat_docau_mt",
+    "mat_dotru_mp", "mat_dotru_mt", "mat_truc_mt",
+]
+
+# Các trường số THUỘC cận lâm sàng (xét nghiệm máu, sinh hóa máu, xét nghiệm nước tiểu).
+# Theo yêu cầu của Jo: nếu có nhập dữ liệu thì CHỈ kiểm tra lỗi dùng dấu chấm (.) thay cho
+# dấu phẩy (,) ở phần thập phân — không cảnh báo/báo lỗi gì khác (kể cả khi không phải số hợp lệ,
+# hay dính khoảng trắng ẩn).
+CANLAMSANG_NUMERIC_FIELDS = [
     "kskdk_xnm_slhc", "kskdk_xnm_huyetsacto", "kskdk_xnm_hematocrit", "kskdk_xnm_mcv",
     "kskdk_xnm_mch", "kskdk_xnm_mchc", "kskdk_xnm_rdw", "kskdk_xnm_slbc",
     "kskdk_xnm_slbc_trungtinh", "kskdk_xnm_slbc_lympho", "kskdk_xnm_slbc_donnhan",
@@ -58,9 +69,6 @@ NUMERIC_FIELDS = [
     "kskdk_shm_alat_gpt", "kskdk_xnnt_titrong", "kskdk_xnnt_ph", "kskdk_xnnt_bachcau",
     "kskdk_xnnt_hongcau", "kskdk_xnnt_protein", "kskdk_xnnt_glucose", "kskdk_xnnt_cetonic",
     "kskdk_xnnt_bilirubin", "kskdk_xnnt_urobilinogen",
-    "mat_khongkinh_mp", "mat_khongkinh_mt", "mat_kinhlo_mp", "mat_kinhlo_mt",
-    "mat_cokinh_mp", "mat_cokinh_mt", "mat_docau_mp", "mat_docau_mt",
-    "mat_dotru_mp", "mat_dotru_mt", "mat_truc_mt",
 ]
 
 DATE_FIELDS = ["ngay_kham", "ngay_sinh"]
@@ -81,7 +89,7 @@ STRICT_ID_CATEGORY = {
 ICD_RE = re.compile(r"^[A-TV-Z][0-9]{2}(\.[0-9]{1,2})?$", re.IGNORECASE)
 CCCD_RE = re.compile(r"^\d{12}$")
 PHONE_RE = re.compile(r"^0\d{9,10}$")
-NBSP_CHARS = ["\xa0", "\u200b", "\ufeff", "\u2007", "\u202f"]
+NBSP_CHARS = ["\xa0", "​", "﻿", " ", " "]
 
 # 5 giá trị hợp lệ của ô Kết luận (đúng theo danh sách Jo cung cấp)
 DANH_MUC_DE_NGHI_CHOICES = [
@@ -363,6 +371,15 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
             issues.append({"level": "Lỗi", "message": "Bắt buộc nhập nhưng đang để trống"})
         return issues
 
+    # ---- cận lâm sàng (xét nghiệm máu / sinh hóa máu / xét nghiệm nước tiểu) ----
+    # Có nhập thì CHỈ kiểm tra lỗi dấu chấm (.) thay cho dấu phẩy (,) ở phần thập phân;
+    # không kiểm tra/cảnh báo gì khác cho các ô này (kể cả khoảng trắng ẩn hay "không phải số hợp lệ").
+    if code in CANLAMSANG_NUMERIC_FIELDS:
+        fmt_err = decimal_format_issue(raw_value)
+        if fmt_err:
+            issues.append({"level": "Lỗi", "message": fmt_err})
+        return issues
+
     # khoảng trắng ẩn — cảnh báo chung cho mọi ô có chữ
     if isinstance(raw_value, str) and has_hidden_ws(raw_value):
         issues.append({"level": "Cảnh báo", "message": "Chuỗi dính khoảng trắng ẩn (NBSP/zero-width) — nên dọn lại trước khi dùng"})
@@ -419,7 +436,7 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
                 issues.append({"level": "Cảnh báo", "message": f"Mã '{part}' không giống định dạng ICD-10 thông thường"})
         return issues
 
-    # ---- số ----
+    # ---- số (không thuộc cận lâm sàng) ----
     if code in NUMERIC_FIELDS:
         fmt_err = decimal_format_issue(raw_value)
         if fmt_err:
