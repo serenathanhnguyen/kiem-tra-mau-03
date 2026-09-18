@@ -201,12 +201,17 @@ def compute_the_luc_for_row(raw_by_code):
 
 def compute_danh_muc_de_nghi_for_row(raw_by_code):
     """Tự suy giá trị cho ô Kết luận ('danh_muc_de_nghi') khi đang để trống, dựa trên 13 khối chuyên
-    khoa + Sản khoa/Phụ khoa (quy tắc Jo bổ sung):
-    - Nếu TẤT CẢ các cột '*_phanloai' liên quan (bỏ qua khối Sản khoa/Phụ khoa nếu đã 'từ chối khám')
-      đều là Loại 1 → "Bình thường, hẹn khám định kỳ lần sau".
-    - Ngược lại, nếu có ít nhất 1 cột '*_chandoansobo_icd' HOẶC '*_chandoanxacdinh_icd' có giá trị
-      → "Có yếu tố nguy cơ, cần theo dõi thêm".
-    - Không rơi vào 2 trường hợp trên (không đủ căn cứ) → trả về None, không tự điền."""
+    khoa + Sản khoa/Phụ khoa (khối đã chọn 'từ chối khám' thì không tính vào điều kiện — không có dữ
+    liệu để đánh giá). Quy tắc Jo bổ sung, theo đúng thứ tự:
+      1) Nếu TẤT CẢ các cột '*_phanloai' liên quan đều là Loại 1
+         → "Bình thường, hẹn khám định kỳ lần sau".
+      2) Ngược lại, nếu TẤT CẢ các cột '*_phanloai' liên quan đều là loại > 1 (2-5):
+         2a) nếu có ít nhất 1 cột '*_chandoanxacdinh_icd' có giá trị
+             → "Có yếu tố nguy cơ, cần theo dõi thêm";
+         2b) else nếu có ít nhất 1 cột '*_chandoansobo_icd' có giá trị
+             → "Có yếu tố nguy cơ, cần theo dõi thêm".
+      3) Không rơi vào 2 trường hợp trên (vd: các khối lẫn lộn Loại 1 và Loại >1) → trả về None,
+         không tự điền."""
 
     def blank(c):
         return is_blank(raw_by_code.get(c))
@@ -229,11 +234,17 @@ def compute_danh_muc_de_nghi_for_row(raw_by_code):
         xacdinh_codes.append(xacdinh_c)
 
     phanloai_values = [val(c) for c in phanloai_codes]
-    if phanloai_values and all(v == "1" for v in phanloai_values):
+    if not phanloai_values:
+        return None
+
+    if all(v == "1" for v in phanloai_values):
         return "Bình thường, hẹn khám định kỳ lần sau"
 
-    if any(not blank(c) for c in sobo_codes) or any(not blank(c) for c in xacdinh_codes):
-        return "Có yếu tố nguy cơ, cần theo dõi thêm"
+    if all(v in ("2", "3", "4", "5") for v in phanloai_values):
+        if any(not blank(c) for c in xacdinh_codes):
+            return "Có yếu tố nguy cơ, cần theo dõi thêm"
+        if any(not blank(c) for c in sobo_codes):
+            return "Có yếu tố nguy cơ, cần theo dõi thêm"
 
     return None
 
