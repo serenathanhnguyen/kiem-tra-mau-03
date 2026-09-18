@@ -65,7 +65,9 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
         """
 - **Ô bắt buộc** (nhãn có dấu `*`) không được để trống.
 - **Ngày tháng** (`ngay_kham`, `ngay_sinh`) đúng định dạng `dd/MM/yyyy`.
-- **CCCD** đủ 12 chữ số, và **không trùng** với dòng khác trong cùng file.
+- **CCCD** đủ 12 chữ số, và **không trùng** với dòng khác trong cùng file. Ngoài ra suy từ CCCD để
+  đối chiếu: ký tự thứ 4 (chẵn → Nam, lẻ → Nữ) so với ô **giới tính**; ký tự thứ 4-6 (thế kỷ + 2 số
+  cuối năm sinh) so với năm của ô **ngày sinh** — lệch thì báo lỗi.
 - **Số điện thoại** đúng dạng số Việt Nam thông thường (cảnh báo, không chặn).
 - **Các ô chọn 1 giá trị cố định**: giới tính, nhóm máu, yếu tố Rh, loại khám, phân loại thể lực (1-5),
   các ô "Chưa phát hiện bất thường" (0/1), các câu tiền sử bệnh Có/Không...
@@ -78,6 +80,9 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   chính file Excel (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`).
 - **Ô Kết luận (`danh_muc_de_nghi`)** phải là 1 trong 5 giá trị cố định (Bình thường hẹn khám định kỳ /
   Có yếu tố nguy cơ / Đã có bệnh mạn tính / Chuyển tuyến / Khác).
+- **Đối tượng khám = 2 (Người lao động chính thức)**: bắt buộc nhập `nghenghiep_code`, `noi_cong_tac`,
+  `noi_cong_tac_xa_phuong`; riêng `noi_cong_tac` lúc này chỉ cần có dữ liệu, không đối chiếu danh mục
+  `NoiLamViec` (với đối tượng khác thì `noi_cong_tac` vẫn đối chiếu danh mục như cũ).
 - **13 khối chuyên khoa ở tab Khám lâm sàng** (4 ô: chưa phát hiện bất thường / chẩn đoán sơ bộ /
   chẩn đoán xác định / phân loại): chọn "chưa phát hiện bất thường" thì không được có ICD và phân
   loại phải là Loại 1; có ICD (sơ bộ hoặc xác định) thì phân loại phải từ Loại 2 trở lên; ô phân
