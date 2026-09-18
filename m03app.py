@@ -3,7 +3,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from validators import validate_workbook, annotate_workbook, SHEET_MAIN
+from validators import validate_workbook, annotate_workbook, SHEET_MAIN, DE_NGHI_DEFAULT_VALUE
 
 st.set_page_config(page_title="Kiểm tra file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
 st.title("✅ Kiểm tra file Excel Mẫu 03 (KSKDK) trước khi nhập Medinet")
@@ -19,7 +19,8 @@ uploaded = st.file_uploader("Chọn file Excel (.xlsx)", type=["xlsx"])
 if uploaded is not None:
     try:
         with st.spinner("Đang kiểm tra..."):
-            issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row = validate_workbook(uploaded.getvalue())
+            (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
+             danhmucdenghi_by_row, denghi_by_row) = validate_workbook(uploaded.getvalue())
     except Exception as e:
         st.error(f"Không đọc được file: {e}")
         st.stop()
@@ -52,15 +53,19 @@ if uploaded is not None:
 
     # File Excel đã kiểm tra: đã điền phân loại thể lực + tô màu/ghi chú ô lỗi (luôn có, kể cả khi không lỗi)
     try:
-        annotated = annotate_workbook(uploaded.getvalue(), issues_df, theluc_by_row)
+        annotated = annotate_workbook(
+            uploaded.getvalue(), issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row
+        )
         st.download_button(
-            "⬇ Tải file Excel đã kiểm tra (đã điền phân loại thể lực + đánh dấu ô lỗi)",
+            "⬇ Tải file Excel đã kiểm tra (đã điền phân loại thể lực + Kết luận/Đề nghị còn trống + đánh dấu ô lỗi)",
             data=annotated,
             file_name="mau03_da_kiem_tra.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         st.caption(
-            f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng. "
+            f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng, "
+            f"đề xuất **Kết luận (danh_muc_de_nghi)** cho {len(danhmucdenghi_by_row)} dòng đang trống, "
+            f"và điền mặc định **'{DE_NGHI_DEFAULT_VALUE}'** cho ô **de_nghi** ở {len(denghi_by_row)} dòng đang trống. "
             "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết."
         )
     except Exception as e:
@@ -118,6 +123,12 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   cân nặng (theo giới tính; bảng học sinh/SV nếu Đối tượng khám = mã 1, còn lại dùng bảng người lao
   động) rồi **điền sẵn vào cột này** trong file tải về. Vì file không có cột vòng ngực nên chỉ dùng 2
   chỉ số, lấy loại kém hơn.
+- **Tự đề xuất điền khi đang để trống** (chỉ áp dụng trong file Excel tải về, không tính là lỗi/cảnh báo):
+  - Ô **Kết luận** (`danh_muc_de_nghi`): nếu tất cả các ô `*_phanloai` của 13 khối chuyên khoa (và
+    Sản khoa/Phụ khoa, trừ khối đã chọn "từ chối khám") đều là **Loại 1** → điền "Bình thường, hẹn
+    khám định kỳ lần sau"; nếu có ít nhất 1 ô `*_chandoansobo_icd` hoặc `*_chandoanxacdinh_icd` có
+    giá trị → điền "Có yếu tố nguy cơ, cần theo dõi thêm". Ngoài 2 trường hợp này thì để trống như cũ.
+  - Ô **`de_nghi`** (Đề nghị, ghi rõ): nếu đang trống → điền mặc định "Tái khám định kỳ".
 - **3 cặp đo thị lực Mắt** (không kính / kính lỗ / có kính, mỗi cặp gồm mắt phải + mắt trái): phải
   điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với 2 cặp "kính lỗ" và
   "có kính" — điền cặp này thì không điền cặp kia.
