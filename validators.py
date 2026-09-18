@@ -302,6 +302,12 @@ def compute_data_fixes_for_row(raw_by_code):
         đang trống → chỉnh DB (phukhoa_chuaphathienbatthuong) = 1 và DE (phukhoa_phanloai) = 1.
       - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac' (cột R) đang trống → điền 'doi_tuong_kham'
         (cột C) = 3.
+      - 'doi_tuong_kham' (cột C) = 3 (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên) →
+        điền cố định 'hinh_thuc_chi_tra_khamsk' (cột V) = "Ngân sách thành phố hỗ trợ" và
+        'hinh_thuc_chi_tra_khamsk_chi_tiet' (cột W) = "Khám Theo Hợp Đồng".
+      - 1 khối chuyên khoa (4 hoặc 5 ô) có '*_chandoansobo_icd' hoặc '*_chandoanxacdinh_icd' khác 0
+        (có giá trị ICD thật) → ô '*_chuaphathienbatthuong' (ô check "Chưa phát hiện bất thường")
+        của đúng khối đó chuyển null — tự xoá khi đang mâu thuẫn dữ liệu.
     """
     fixes = {}
 
@@ -336,6 +342,20 @@ def compute_data_fixes_for_row(raw_by_code):
         if _is_literal_zero(raw_by_code.get(code)):
             fixes[code] = None
 
+    # Quy tắc mới (Jo bổ sung): 1 khối chuyên khoa có ICD (sơ bộ hoặc xác định) mang giá trị THẬT
+    # (khác 0, khác trống) thì ô check "Chưa phát hiện bất thường" của đúng khối đó phải là null —
+    # tự xoá nếu đang mâu thuẫn (đang chọn "Chưa phát hiện bất thường" nhưng lại có ICD).
+    def has_icd_value(code):
+        return (not blank(code)) and not _is_literal_zero(raw_by_code.get(code))
+
+    icd_check_groups = [(c, s, x) for c, s, x, _p in SPECIALTY_BLOCKS_4FIELD.values()]
+    icd_check_groups += [(c, s, x) for _t, c, s, x, _p in SPECIALTY_BLOCKS_5FIELD.values()]
+    for check_c, sobo_c, xacdinh_c in icd_check_groups:
+        if check_c in fixes:
+            continue  # đã bị xoá trắng ở quy tắc giới tính (Nam) — khỏi ghi đè lại
+        if has_icd_value(sobo_c) or has_icd_value(xacdinh_c):
+            fixes[check_c] = None
+
     if blank("loai_kham"):
         fixes["loai_kham"] = 2
 
@@ -362,6 +382,15 @@ def compute_data_fixes_for_row(raw_by_code):
 
     if blank("nghenghiep_code") or blank("noi_cong_tac"):
         fixes["doi_tuong_kham"] = 3
+
+    # Quy tắc mới (Jo bổ sung): Đối tượng khám (cột C) = 3 → điền cố định Hình thức chi trả khám
+    # sức khỏe (cột V) + Hình thức nhà nước hỗ trợ (cột W). Dùng giá trị SAU KHI áp quy tắc ngay
+    # trên, để vẫn tính cả trường hợp cột C gốc đang trống nhưng vừa được tự điền = 3.
+    effective_doi_tuong = fixes.get("doi_tuong_kham", raw_by_code.get("doi_tuong_kham"))
+    dt_codes = [p.strip() for p in clean_ws(effective_doi_tuong).split(",") if p.strip()]
+    if "3" in dt_codes:
+        fixes["hinh_thuc_chi_tra_khamsk"] = "Ngân sách thành phố hỗ trợ"
+        fixes["hinh_thuc_chi_tra_khamsk_chi_tiet"] = "Khám Theo Hợp Đồng"
 
     return fixes
 
