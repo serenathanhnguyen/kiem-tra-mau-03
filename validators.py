@@ -89,7 +89,7 @@ STRICT_ID_CATEGORY = {
 ICD_RE = re.compile(r"^[A-TV-Z][0-9]{2}(\.[0-9]{1,2})?$", re.IGNORECASE)
 CCCD_RE = re.compile(r"^\d{12}$")
 PHONE_RE = re.compile(r"^0\d{9,10}$")
-NBSP_CHARS = ["\xa0", "​", "﻿", " ", " "]
+NBSP_CHARS = ["\xa0", "\u200b", "\ufeff", "\u2007", "\u202f"]
 
 # 5 giá trị hợp lệ của ô Kết luận (đúng theo danh sách Jo cung cấp)
 DANH_MUC_DE_NGHI_CHOICES = [
@@ -207,7 +207,8 @@ def compute_danh_muc_de_nghi_for_row(raw_by_code):
       1) Nếu có ít nhất 1 cột '*_phanloai' liên quan là loại LỚN HƠN 1, VÀ có ít nhất 1 cột
          '*_chandoanxacdinh_icd' có giá trị
          → "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ".
-      2) Ngược lại, nếu có ít nhất 1 cột '*_chandoansobo_icd' có giá trị
+      2) Ngược lại, nếu có ít nhất 1 cột '*_phanloai' có giá trị (>=1, tức 1..5) VÀ có ít nhất 1 cột
+         '*_chandoansobo_icd' có giá trị
          → "Có yếu tố nguy cơ, cần theo dõi thêm".
       3) Còn lại (không rơi vào 2 trường hợp trên)
          → "Bình thường, hẹn khám định kỳ lần sau"."""
@@ -233,13 +234,14 @@ def compute_danh_muc_de_nghi_for_row(raw_by_code):
         xacdinh_codes.append(xacdinh_c)
 
     has_phanloai_gt1 = any(val(c) in ("2", "3", "4", "5") for c in phanloai_codes)
+    has_phanloai_ge1 = any(val(c) in ("1", "2", "3", "4", "5") for c in phanloai_codes)
     has_xacdinh = any(not blank(c) for c in xacdinh_codes)
     has_sobo = any(not blank(c) for c in sobo_codes)
 
     if has_phanloai_gt1 and has_xacdinh:
         return "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ"
 
-    if has_sobo:
+    if has_phanloai_ge1 and has_sobo:
         return "Có yếu tố nguy cơ, cần theo dõi thêm"
 
     return "Bình thường, hẹn khám định kỳ lần sau"
@@ -769,7 +771,7 @@ def validate_workbook(file_bytes):
 
         row_ctx = {}
         raw_by_code = {}
-        # Đọc trước Đối tượng khám để check_cell biết có phải mã 2 không (ảnh hưởng cách xử lý noi_cong_tac)
+        # Đọc trước Đối tượng khám để check_cell biết có phải mã 1/2 không (ảnh hưởng cách xử lý noi_cong_tac)
         dt_def = col_defs_by_code.get("doi_tuong_kham")
         if dt_def:
             dt_codes = [p.strip() for p in clean_ws(ws.cell(row=r, column=dt_def["col"]).value).split(",") if p.strip()]
