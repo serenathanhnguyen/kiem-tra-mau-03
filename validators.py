@@ -295,10 +295,11 @@ def compute_data_fixes_for_row(raw_by_code):
       - 'kskdk_xnm_slhc' — Số lượng hồng cầu (cột EE): trống thì điền = 0.
       - '*_tuchoikham' (cột CV: sankhoa_tuchoikham, cột DA: phukhoa_tuchoikham) = 1: cột phanloai
         tương ứng (CZ: sankhoa_phanloai, DE: phukhoa_phanloai) chuyển null.
-      - Ngược lại, nếu '*_tuchoikham' (CV/DA) đang TRỐNG và cột phanloai tương ứng (CZ/DE) cũng đang
-        TRỐNG, thì chỉnh cột phanloai (CZ/DE) = 1 và cột chuaphathienbatthuong tương ứng (CW: sankhoa,
-        DB: phukhoa) = 1. (Không áp dụng cho Nam — 2 khối này chỉ dành cho nữ, xem quy tắc gioi_tinh=1
-        ở trên.)
+      - gioi_tinh = 2 (Nữ) và cột CV, CX, CY (sankhoa_tuchoikham, sankhoa_chandoansobo_icd,
+        sankhoa_chandoanxacdinh_icd) đều đang trống → chỉnh CW (sankhoa_chuaphathienbatthuong) = 1
+        và CZ (sankhoa_phanloai) = 1.
+      - gioi_tinh = 2 (Nữ) và cột DC, DD (phukhoa_chandoansobo_icd, phukhoa_chandoanxacdinh_icd) đều
+        đang trống → chỉnh DB (phukhoa_chuaphathienbatthuong) = 1 và DE (phukhoa_phanloai) = 1.
       - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac' (cột R) đang trống → điền 'doi_tuong_kham'
         (cột C) = 3.
     """
@@ -341,12 +342,23 @@ def compute_data_fixes_for_row(raw_by_code):
     if blank("kskdk_xnm_slhc"):
         fixes["kskdk_xnm_slhc"] = 0
 
-    for tuchoi_c, check_c, _sobo_c, _xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
+    for tuchoi_c, _check_c, _sobo_c, _xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
         if (not blank(tuchoi_c)) and val(tuchoi_c) == "1":
             fixes[phanloai_c] = None
-        elif gt != "1" and blank(tuchoi_c) and blank(phanloai_c):
-            fixes[phanloai_c] = 1
-            fixes[check_c] = 1
+
+    sankhoa_tuchoi_c, sankhoa_check_c, sankhoa_sobo_c, sankhoa_xacdinh_c, sankhoa_phanloai_c = \
+        SPECIALTY_BLOCKS_5FIELD["sankhoa"]
+    phukhoa_tuchoi_c, phukhoa_check_c, phukhoa_sobo_c, phukhoa_xacdinh_c, phukhoa_phanloai_c = \
+        SPECIALTY_BLOCKS_5FIELD["phukhoa"]
+
+    if gt == "2":
+        if (sankhoa_phanloai_c not in fixes and blank(sankhoa_tuchoi_c)
+                and blank(sankhoa_sobo_c) and blank(sankhoa_xacdinh_c)):
+            fixes[sankhoa_check_c] = 1
+            fixes[sankhoa_phanloai_c] = 1
+        if (phukhoa_phanloai_c not in fixes and blank(phukhoa_sobo_c) and blank(phukhoa_xacdinh_c)):
+            fixes[phukhoa_check_c] = 1
+            fixes[phukhoa_phanloai_c] = 1
 
     if blank("nghenghiep_code") or blank("noi_cong_tac"):
         fixes["doi_tuong_kham"] = 3
