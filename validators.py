@@ -89,7 +89,10 @@ STRICT_ID_CATEGORY = {
 ICD_RE = re.compile(r"^[A-TV-Z][0-9]{2}(\.[0-9]{1,2})?$", re.IGNORECASE)
 CCCD_RE = re.compile(r"^\d{12}$")
 PHONE_RE = re.compile(r"^0\d{9,10}$")
-NBSP_CHARS = ["\xa0", "\u200b", "\ufeff", "\u2007", "\u202f"]
+NBSP_CHARS = [
+    "\xa0", "\u200b", "\ufeff", "\u2007", "\u202f",   # NBSP, zero-width space, BOM, figure space, narrow NBSP
+    "\u200c", "\u200d", "\u2060", "\u00ad",             # zero-width non-joiner/joiner, word joiner, soft hyphen
+]
 
 # 5 giá trị hợp lệ của ô Kết luận (đúng theo danh sách Jo cung cấp)
 DANH_MUC_DE_NGHI_CHOICES = [
