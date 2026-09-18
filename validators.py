@@ -386,6 +386,11 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
 
     # ---- danh mục theo TÊN (nghề nghiệp, nơi công tác) ----
     if code in STRICT_TEXT_CATEGORY:
+        # Khi Đối tượng khám = 2 (Người lao động chính thức), noi_cong_tac chỉ cần CÓ dữ liệu,
+        # KHÔNG đối chiếu danh mục NoiLamViec nữa (yêu cầu của Jo). Phần bắt buộc-không-trống
+        # được kiểm ở check_doi_tuong_rules().
+        if code == "noi_cong_tac" and row_ctx.get("_is_doi_tuong_2"):
+            return issues
         sheet_name, _ = STRICT_TEXT_CATEGORY[code]
         ref = refs.get(sheet_name)
         if ref:
@@ -497,6 +502,66 @@ def check_specialty_blocks(raw_by_code, gioi_tinh_text):
     return issues
 
 
+def check_doi_tuong_rules(raw_by_code):
+    """Quy tắc theo Đối tượng khám (Jo bổ sung):
+    Nếu doi_tuong_kham = 2 (Người lao động chính thức theo pháp luật ATVSLĐ) thì 3 ô bắt buộc
+    không được để trống: nghenghiep_code, noi_cong_tac, noi_cong_tac_xa_phuong.
+    (doi_tuong_kham có thể chứa nhiều mã cách nhau dấu phẩy — chỉ cần có mã '2' trong đó.)
+    """
+    issues = []
+    dt_codes = [p.strip() for p in clean_ws(raw_by_code.get("doi_tuong_kham")).split(",") if p.strip()]
+    if "2" in dt_codes:
+        for code in ("nghenghiep_code", "noi_cong_tac", "noi_cong_tac_xa_phuong"):
+            if is_blank(raw_by_code.get(code)):
+                issues.append({
+                    "code": code,
+                    "level": "Lỗi",
+                    "message": "Bắt buộc nhập khi Đối tượng khám là 'Người lao động chính thức' (mã 2)",
+                })
+    return issues
+
+
+def check_cccd_consistency(raw_by_code):
+    """Suy thông tin từ CCCD 12 số và đối chiếu với ô đã nhập (quy tắc Jo bổ sung):
+    - Ký tự thứ 4: CHẴN (0,2,4,6,8) → Nam (gioi_tinh=1); LẺ (1,3,5,7,9) → Nữ (gioi_tinh=2).
+    - Ký tự thứ 4 cũng cho biết thế kỷ (0-1:19xx, 2-3:20xx, 4-5:21xx...); ký tự 5-6 = 2 số cuối
+      năm sinh. Ghép lại ra năm sinh đầy đủ, đối chiếu với năm của ô ngay_sinh.
+    Ví dụ 079171301583: ký tự 4='1' (lẻ→Nữ, thế kỷ 19xx), ký tự 5-6='71' → năm sinh 1971.
+    Chỉ chạy khi CCCD đủ 12 số (CCCD sai đã được báo ở chỗ khác).
+    """
+    issues = []
+    cccd = clean_ws(raw_by_code.get("dinh_danh_ca_nhan"))
+    if not CCCD_RE.match(cccd):
+        return issues
+
+    d4 = int(cccd[3])          # ký tự thứ 4
+    yy = int(cccd[4:6])        # ký tự 5-6
+
+    # 1) Giới tính
+    gt = clean_ws(raw_by_code.get("gioi_tinh"))
+    if gt in ("1", "2"):
+        expected = "1" if d4 % 2 == 0 else "2"
+        if gt != expected:
+            ten = "Nam" if expected == "1" else "Nữ"
+            issues.append({
+                "code": "gioi_tinh",
+                "level": "Lỗi",
+                "message": f"Giới tính không khớp CCCD: ký tự thứ 4 ('{cccd[3]}') cho biết là {ten}, nhưng ô giới tính đang là '{gt}'",
+            })
+
+    # 2) Năm sinh
+    century = 1900 + (d4 // 2) * 100   # 0,1→1900; 2,3→2000; 4,5→2100; ...
+    year_cccd = century + yy
+    d, err = parse_date_cell(raw_by_code.get("ngay_sinh"))
+    if d is not None and d.year != year_cccd:
+        issues.append({
+            "code": "ngay_sinh",
+            "level": "Lỗi",
+            "message": f"Năm sinh không khớp CCCD: CCCD cho biết năm sinh {year_cccd} (ký tự 4-6 = '{cccd[3:6]}'), nhưng ngày sinh đang là năm {d.year}",
+        })
+    return issues
+
+
 # ============================================================
 # KIỂM TRA TOÀN BỘ FILE
 # ============================================================
@@ -530,6 +595,11 @@ def validate_workbook(file_bytes):
 
         row_ctx = {}
         raw_by_code = {}
+        # Đọc trước Đối tượng khám để check_cell biết có phải mã 2 không (ảnh hưởng cách xử lý noi_cong_tac)
+        dt_def = col_defs_by_code.get("doi_tuong_kham")
+        if dt_def:
+            dt_codes = [p.strip() for p in clean_ws(ws.cell(row=r, column=dt_def["col"]).value).split(",") if p.strip()]
+            row_ctx["_is_doi_tuong_2"] = ("2" in dt_codes)
         for cdef in col_defs:
             code = cdef["code"]
             if not code:
@@ -551,7 +621,10 @@ def validate_workbook(file_bytes):
                 })
 
         gioi_tinh_text = clean_ws(raw_by_code.get("gioi_tinh"))
-        for iss in check_specialty_blocks(raw_by_code, gioi_tinh_text):
+        cross_issues = (check_specialty_blocks(raw_by_code, gioi_tinh_text)
+                        + check_doi_tuong_rules(raw_by_code)
+                        + check_cccd_consistency(raw_by_code))
+        for iss in cross_issues:
             cdef = col_defs_by_code.get(iss["code"])
             issues.append({
                 "Dòng Excel": r,
