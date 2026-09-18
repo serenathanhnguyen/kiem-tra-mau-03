@@ -100,6 +100,9 @@ DANH_MUC_DE_NGHI_CHOICES = [
     "Khác",
 ]
 
+# Giá trị mặc định tự điền cho ô 'de_nghi' (Đề nghị, ghi rõ) khi đang để trống — theo yêu cầu Jo
+DE_NGHI_DEFAULT_VALUE = "Tái khám định kỳ"
+
 # 13 khối chuyên khoa dạng 4 ô: _chuaphathienbatthuong / _chandoansobo_icd / _chandoanxacdinh_icd / _phanloai
 # Mã lấy ĐÚNG theo file gốc — thankinh có lỗi chính tả sẵn trong file ("chuandoansobo" thay vì "chandoansobo")
 SPECIALTY_BLOCKS_4FIELD = {
@@ -194,6 +197,45 @@ def compute_the_luc_for_row(raw_by_code):
     table = "student" if "1" in dt_codes else "worker"
 
     return classify_the_luc(height, weight, gender, table)
+
+
+def compute_danh_muc_de_nghi_for_row(raw_by_code):
+    """Tự suy giá trị cho ô Kết luận ('danh_muc_de_nghi') khi đang để trống, dựa trên 13 khối chuyên
+    khoa + Sản khoa/Phụ khoa (quy tắc Jo bổ sung):
+    - Nếu TẤT CẢ các cột '*_phanloai' liên quan (bỏ qua khối Sản khoa/Phụ khoa nếu đã 'từ chối khám')
+      đều là Loại 1 → "Bình thường, hẹn khám định kỳ lần sau".
+    - Ngược lại, nếu có ít nhất 1 cột '*_chandoansobo_icd' HOẶC '*_chandoanxacdinh_icd' có giá trị
+      → "Có yếu tố nguy cơ, cần theo dõi thêm".
+    - Không rơi vào 2 trường hợp trên (không đủ căn cứ) → trả về None, không tự điền."""
+
+    def blank(c):
+        return is_blank(raw_by_code.get(c))
+
+    def val(c):
+        return clean_ws(raw_by_code.get(c))
+
+    phanloai_codes, sobo_codes, xacdinh_codes = [], [], []
+
+    for _check_c, sobo_c, xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_4FIELD.values():
+        phanloai_codes.append(phanloai_c)
+        sobo_codes.append(sobo_c)
+        xacdinh_codes.append(xacdinh_c)
+
+    for tuchoi_c, _check_c, sobo_c, xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
+        if (not blank(tuchoi_c)) and val(tuchoi_c) == "1":
+            continue  # đã từ chối khám — khối này không tính vào điều kiện
+        phanloai_codes.append(phanloai_c)
+        sobo_codes.append(sobo_c)
+        xacdinh_codes.append(xacdinh_c)
+
+    phanloai_values = [val(c) for c in phanloai_codes]
+    if phanloai_values and all(v == "1" for v in phanloai_values):
+        return "Bình thường, hẹn khám định kỳ lần sau"
+
+    if any(not blank(c) for c in sobo_codes) or any(not blank(c) for c in xacdinh_codes):
+        return "Có yếu tố nguy cơ, cần theo dõi thêm"
+
+    return None
 
 
 # ============================================================
@@ -707,7 +749,9 @@ def validate_workbook(file_bytes):
 
     issues = []
     cccd_seen = {}
-    theluc_by_row = {}   # dòng Excel -> loại thể lực đã tính (1-5)
+    theluc_by_row = {}          # dòng Excel -> loại thể lực đã tính (1-5)
+    danhmucdenghi_by_row = {}   # dòng Excel -> giá trị đề xuất cho ô Kết luận (khi đang trống)
+    denghi_by_row = {}          # dòng Excel -> giá trị đề xuất cho ô 'de_nghi' (khi đang trống)
 
     for r in range(DATA_START_ROW, last_row + 1):
         if all(is_blank(ws.cell(row=r, column=c["col"]).value) for c in col_defs):
@@ -772,6 +816,14 @@ def validate_workbook(file_bytes):
         if the_luc is not None:
             theluc_by_row[r] = the_luc
 
+        if is_blank(raw_by_code.get("danh_muc_de_nghi")):
+            suggested_ketluan = compute_danh_muc_de_nghi_for_row(raw_by_code)
+            if suggested_ketluan is not None:
+                danhmucdenghi_by_row[r] = suggested_ketluan
+
+        if is_blank(raw_by_code.get("de_nghi")):
+            denghi_by_row[r] = DE_NGHI_DEFAULT_VALUE
+
     for cccd, rows in cccd_seen.items():
         if len(rows) > 1:
             for r in rows:
@@ -796,25 +848,46 @@ def validate_workbook(file_bytes):
 
     issues_df = pd.DataFrame(issues)
     n_rows_checked = max(0, last_row - DATA_START_ROW + 1)
-    return issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row
+    return (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
+            danhmucdenghi_by_row, denghi_by_row)
 
 
-def annotate_workbook(file_bytes, issues_df, theluc_by_row):
-    """Tạo file Excel để tải về: (1) điền loại thể lực đã tính vào cột 'phanloai' (Phân Loại thể lực);
-    (2) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
+def _find_col_by_code(ws, code):
+    for c in range(1, ws.max_column + 1):
+        if clean_ws(ws.cell(row=CODE_ROW, column=c).value) == code:
+            return c
+    return None
+
+
+def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row=None, denghi_by_row=None):
+    """Tạo file Excel để tải về:
+    (1) điền loại thể lực đã tính vào cột 'phanloai' (Phân Loại thể lực);
+    (2) điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') và ô 'de_nghi' khi đang để trống;
+    (3) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
     Trả về bytes của file .xlsx."""
+    danhmucdenghi_by_row = danhmucdenghi_by_row or {}
+    denghi_by_row = denghi_by_row or {}
+
     wb = openpyxl.load_workbook(BytesIO(file_bytes))   # giữ nguyên, KHÔNG data_only (để lưu lại được)
     ws = wb[SHEET_MAIN]
 
     # Tìm cột 'phanloai' (Phân Loại thể lực) để điền kết quả
-    phanloai_col = None
-    for c in range(1, ws.max_column + 1):
-        if clean_ws(ws.cell(row=CODE_ROW, column=c).value) == "phanloai":
-            phanloai_col = c
-            break
+    phanloai_col = _find_col_by_code(ws, "phanloai")
     if phanloai_col:
         for r, val in theluc_by_row.items():
             ws.cell(row=r, column=phanloai_col).value = val
+
+    # Điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') khi đang để trống
+    danh_muc_de_nghi_col = _find_col_by_code(ws, "danh_muc_de_nghi")
+    if danh_muc_de_nghi_col:
+        for r, val in danhmucdenghi_by_row.items():
+            ws.cell(row=r, column=danh_muc_de_nghi_col).value = val
+
+    # Điền giá trị mặc định cho ô 'de_nghi' (Đề nghị, ghi rõ) khi đang để trống
+    de_nghi_col = _find_col_by_code(ws, "de_nghi")
+    if de_nghi_col:
+        for r, val in denghi_by_row.items():
+            ws.cell(row=r, column=de_nghi_col).value = val
 
     # Gom các issue theo ô (row, col_letter) để 1 ô có thể có nhiều ghi chú
     if issues_df is not None and not issues_df.empty:
