@@ -308,6 +308,10 @@ def compute_data_fixes_for_row(raw_by_code):
       - 1 khối chuyên khoa (4 hoặc 5 ô) có '*_chandoansobo_icd' hoặc '*_chandoanxacdinh_icd' khác 0
         (có giá trị ICD thật) → ô '*_chuaphathienbatthuong' (ô check "Chưa phát hiện bất thường")
         của đúng khối đó chuyển null — tự xoá khi đang mâu thuẫn dữ liệu.
+      - Bất kỳ ô '*_chandoanxacdinh_icd' nào (13 khối chuyên khoa + Sản khoa/Phụ khoa) có giá trị
+        KHÁC 0 và KHÁC 1 (tức có mã ICD thật, không phải giá trị rác/placeholder) → điền cố định
+        'danh_muc_de_nghi' (cột FP, "Kết Luận") = "Đã có bệnh mạn tính, tiếp tục điều trị theo phác
+        đồ/toa cũ" — ghi đè cả khi ô này đã có giá trị khác.
     """
     fixes = {}
 
@@ -355,6 +359,23 @@ def compute_data_fixes_for_row(raw_by_code):
             continue  # đã bị xoá trắng ở quy tắc giới tính (Nam) — khỏi ghi đè lại
         if has_icd_value(sobo_c) or has_icd_value(xacdinh_c):
             fixes[check_c] = None
+
+    # Quy tắc mới (Jo bổ sung): bất kỳ ô '*_chandoanxacdinh_icd' nào (13 khối + Sản khoa/Phụ khoa)
+    # có giá trị KHÁC 0 VÀ KHÁC 1 (mã ICD thật, không phải 0/1 rác) → ép cứng Kết luận
+    # ('danh_muc_de_nghi', cột FP) = "Đã có bệnh mạn tính...", ghi đè cả giá trị đang có sẵn.
+    def has_real_xacdinh(code):
+        if blank(code):
+            return False
+        if _is_literal_zero(raw_by_code.get(code)):
+            return False
+        n = to_number(raw_by_code.get(code))
+        if n is not None and n == 1:
+            return False
+        return True
+
+    xacdinh_codes_all = [x for _c, _s, x in icd_check_groups]
+    if any(has_real_xacdinh(code) for code in xacdinh_codes_all):
+        fixes["danh_muc_de_nghi"] = "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ"
 
     if blank("loai_kham"):
         fixes["loai_kham"] = 2
