@@ -397,10 +397,10 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
 
     # ---- danh mục theo TÊN (nghề nghiệp, nơi công tác) ----
     if code in STRICT_TEXT_CATEGORY:
-        # Khi Đối tượng khám = 2 (Người lao động chính thức), noi_cong_tac chỉ cần CÓ dữ liệu,
-        # KHÔNG đối chiếu danh mục NoiLamViec nữa (yêu cầu của Jo). Phần bắt buộc-không-trống
-        # được kiểm ở check_doi_tuong_rules().
-        if code == "noi_cong_tac" and row_ctx.get("_is_doi_tuong_2"):
+        # Khi Đối tượng khám = 1 hoặc 2 (Sinh viên/học viên hoặc Người lao động chính thức),
+        # noi_cong_tac chỉ cần CÓ dữ liệu, KHÔNG đối chiếu danh mục NoiLamViec nữa (yêu cầu của Jo).
+        # Phần bắt buộc-không-trống được kiểm ở check_doi_tuong_rules().
+        if code == "noi_cong_tac" and row_ctx.get("_skip_noicongtac_catalog"):
             return issues
         sheet_name, _ = STRICT_TEXT_CATEGORY[code]
         ref = refs.get(sheet_name)
@@ -515,19 +515,19 @@ def check_specialty_blocks(raw_by_code, gioi_tinh_text):
 
 def check_doi_tuong_rules(raw_by_code):
     """Quy tắc theo Đối tượng khám (Jo bổ sung):
-    Nếu doi_tuong_kham = 2 (Người lao động chính thức theo pháp luật ATVSLĐ) thì 3 ô bắt buộc
-    không được để trống: nghenghiep_code, noi_cong_tac, noi_cong_tac_xa_phuong.
-    (doi_tuong_kham có thể chứa nhiều mã cách nhau dấu phẩy — chỉ cần có mã '2' trong đó.)
+    Nếu doi_tuong_kham = 1 (Sinh viên, học viên) HOẶC = 2 (Người lao động chính thức theo pháp luật
+    ATVSLĐ) thì 3 ô bắt buộc không được để trống: nghenghiep_code, noi_cong_tac, noi_cong_tac_xa_phuong.
+    (doi_tuong_kham có thể chứa nhiều mã cách nhau dấu phẩy — chỉ cần có mã '1' hoặc '2' trong đó.)
     """
     issues = []
     dt_codes = [p.strip() for p in clean_ws(raw_by_code.get("doi_tuong_kham")).split(",") if p.strip()]
-    if "2" in dt_codes:
+    if "1" in dt_codes or "2" in dt_codes:
         for code in ("nghenghiep_code", "noi_cong_tac", "noi_cong_tac_xa_phuong"):
             if is_blank(raw_by_code.get(code)):
                 issues.append({
                     "code": code,
                     "level": "Lỗi",
-                    "message": "Bắt buộc nhập khi Đối tượng khám là 'Người lao động chính thức' (mã 2)",
+                    "message": "Bắt buộc nhập khi Đối tượng khám là 'Sinh viên, học viên' (mã 1) hoặc 'Người lao động chính thức' (mã 2)",
                 })
     return issues
 
@@ -649,7 +649,7 @@ def validate_workbook(file_bytes):
         dt_def = col_defs_by_code.get("doi_tuong_kham")
         if dt_def:
             dt_codes = [p.strip() for p in clean_ws(ws.cell(row=r, column=dt_def["col"]).value).split(",") if p.strip()]
-            row_ctx["_is_doi_tuong_2"] = ("2" in dt_codes)
+            row_ctx["_skip_noicongtac_catalog"] = ("1" in dt_codes or "2" in dt_codes)
         for cdef in col_defs:
             code = cdef["code"]
             if not code:
