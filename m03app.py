@@ -175,6 +175,16 @@ with tab_check:
     và DE (`phukhoa_phanloai`) = **1**.
   - **`nghenghiep_code`** (cột Q) hoặc **`noi_cong_tac`** (cột R) đang trống → điền **`doi_tuong_kham`**
     (cột C) = **3**.
+  - **`doi_tuong_kham`** (cột C) = **3** (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên)
+    → điền cố định **`hinh_thuc_chi_tra_khamsk`** (cột V) = **"Ngân sách thành phố hỗ trợ"** và
+    **`hinh_thuc_chi_tra_khamsk_chi_tiet`** (cột W) = **"Khám Theo Hợp Đồng"**.
+  - 1 khối chuyên khoa có **`*_chandoansobo_icd`** hoặc **`*_chandoanxacdinh_icd`** khác 0 (có ICD
+    thật) → ô **`*_chuaphathienbatthuong`** (ô "Chưa phát hiện bất thường") của đúng khối đó chuyển
+    thành **trống (null)**.
+  - Bất kỳ ô **`*_chandoanxacdinh_icd`** nào (13 khối chuyên khoa + Sản khoa/Phụ khoa) có giá trị
+    **khác 0 và khác 1** (mã ICD thật) → điền cố định **`danh_muc_de_nghi`** (cột FP, "Kết Luận") =
+    **"Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ"** — ghi đè cả khi ô này đã có
+    giá trị khác.
 - **Nhận diện cấu trúc file linh hoạt**: công cụ tự tìm dòng "mã field" (keyword) trong 15 dòng đầu
   của sheet thay vì cố định ở dòng 4 — chỉ cần file upload có dòng keyword giống file mẫu (dựa trên
   các mã quen thuộc như `ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`), dữ liệu sẽ được
