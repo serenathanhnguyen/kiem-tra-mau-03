@@ -155,7 +155,12 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   - **Loại khám** (cột ED): nếu đang trống → điền mặc định **= 2**.
   - **Số lượng hồng cầu** (cột EE, `kskdk_xnm_slhc`): nếu đang trống → điền mặc định **= 0**.
   - **`*_tuchoikham`** (cột CV: `sankhoa_tuchoikham`, cột DA: `phukhoa_tuchoikham`) = 1: cột phân loại
-    tương ứng (CZ: `sankhoa_phanloai`, DE: `phukhoa_phanloai`) chuyển thành **trống (null)**.
+    tương ứng (CZ: `sankhoa_phanloai`, DE: `phukhoa_phanloai`) chuyển thành **trống (null)**. Ngược
+    lại, nếu `*_tuchoikham` (CV/DA) đang trống **và** cột phân loại tương ứng (CZ/DE) cũng đang trống,
+    thì điền phân loại (CZ/DE) = **1** và cột "Chưa phát hiện bất thường" tương ứng (CW: sản khoa,
+    DB: phụ khoa) = **1** (không áp dụng cho Nam, vì 2 khối này chỉ dành cho nữ).
+  - **`nghenghiep_code`** (cột Q) hoặc **`noi_cong_tac`** (cột R) đang trống → điền **`doi_tuong_kham`**
+    (cột C) = **3**.
 - **Nhận diện cấu trúc file linh hoạt**: công cụ tự tìm dòng "mã field" (keyword) trong 15 dòng đầu
   của sheet thay vì cố định ở dòng 4 — chỉ cần file upload có dòng keyword giống file mẫu (dựa trên
   các mã quen thuộc như `ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`), dữ liệu sẽ được
