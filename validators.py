@@ -5,6 +5,8 @@ from io import BytesIO
 import openpyxl
 import pandas as pd
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import PatternFill
+from openpyxl.comments import Comment
 
 # ============================================================
 # CẤU HÌNH CẤU TRÚC FILE MẪU 03
@@ -131,6 +133,59 @@ EYE_PAIRS = [
     ("cokinh", ("mat_cokinh_mp", "mat_cokinh_mt")),           # cặp 3: có kính
 ]
 EYE_PAIR_LABEL = {"khongkinh": "không kính", "kinhlo": "kính lỗ", "cokinh": "có kính"}
+
+# Bảng phân loại THỂ LỰC theo QĐ 1613/BYT (Phụ lục 2). Mỗi chỉ số cho ngưỡng DƯỚI của Loại 1,2,3,4;
+# thấp hơn ngưỡng Loại 4 → Loại 5. Loại thể lực = loại KÉM NHẤT (số lớn nhất) giữa chiều cao & cân nặng
+# (file không có vòng ngực nên chỉ dùng 2 chỉ số).
+THE_LUC_TABLES = {
+    ("student", "nam"): {"height": [160, 156, 152, 149], "weight": [48, 46, 42, 39]},
+    ("student", "nu"):  {"height": [152, 149, 145, 142], "weight": [44, 42, 40, 37]},
+    ("worker", "nam"):  {"height": [160, 158, 154, 150], "weight": [50, 47, 45, 41]},
+    ("worker", "nu"):   {"height": [155, 151, 147, 143], "weight": [45, 43, 40, 38]},
+}
+
+FILL_ERROR = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")   # đỏ nhạt
+FILL_WARN = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")     # vàng nhạt
+
+
+def _classify_metric(value, bounds):
+    for i, b in enumerate(bounds):  # i=0 → Loại 1
+        if value >= b:
+            return i + 1
+    return 5
+
+
+def classify_the_luc(height, weight, gender, table):
+    """Trả về loại thể lực 1-5, hoặc None nếu thiếu dữ liệu để tính.
+    gender: 'nam'/'nu'; table: 'student'/'worker'."""
+    if height is None or weight is None or gender not in ("nam", "nu"):
+        return None
+    tbl = THE_LUC_TABLES.get((table, gender))
+    if not tbl:
+        return None
+    h = int(height + 0.5)   # làm tròn 0,5 lên theo QĐ 1613
+    w = int(weight + 0.5)
+    return max(_classify_metric(h, tbl["height"]), _classify_metric(w, tbl["weight"]))
+
+
+def compute_the_luc_for_row(raw_by_code):
+    """Suy loại thể lực cho 1 dòng từ chieucao/cannang + giới tính + đối tượng khám."""
+    height = to_number(raw_by_code.get("chieucao"))
+    weight = to_number(raw_by_code.get("cannang"))
+
+    # Giới tính: ưu tiên ô gioi_tinh (1=Nam,2=Nữ); nếu trống thì suy từ ký tự thứ 4 của CCCD
+    gt = clean_ws(raw_by_code.get("gioi_tinh"))
+    gender = {"1": "nam", "2": "nu"}.get(gt)
+    if gender is None:
+        cccd = clean_ws(raw_by_code.get("dinh_danh_ca_nhan"))
+        if CCCD_RE.match(cccd):
+            gender = "nam" if int(cccd[3]) % 2 == 0 else "nu"
+
+    # Bảng chuẩn theo đối tượng khám: mã 1 = học sinh/SV, mã 2 = người lao động, còn lại = người lao động
+    dt_codes = [p.strip() for p in clean_ws(raw_by_code.get("doi_tuong_kham")).split(",") if p.strip()]
+    table = "student" if "1" in dt_codes else "worker"
+
+    return classify_the_luc(height, weight, gender, table)
 
 
 # ============================================================
@@ -635,6 +690,7 @@ def validate_workbook(file_bytes):
 
     issues = []
     cccd_seen = {}
+    theluc_by_row = {}   # dòng Excel -> loại thể lực đã tính (1-5)
 
     for r in range(DATA_START_ROW, last_row + 1):
         if all(is_blank(ws.cell(row=r, column=c["col"]).value) for c in col_defs):
@@ -695,6 +751,10 @@ def validate_workbook(file_bytes):
         if cccd:
             cccd_seen.setdefault(cccd, []).append(r)
 
+        the_luc = compute_the_luc_for_row(raw_by_code)
+        if the_luc is not None:
+            theluc_by_row[r] = the_luc
+
     for cccd, rows in cccd_seen.items():
         if len(rows) > 1:
             for r in rows:
@@ -719,4 +779,49 @@ def validate_workbook(file_bytes):
 
     issues_df = pd.DataFrame(issues)
     n_rows_checked = max(0, last_row - DATA_START_ROW + 1)
-    return issues_df, structural_notes, n_rows_checked, col_defs
+    return issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row
+
+
+def annotate_workbook(file_bytes, issues_df, theluc_by_row):
+    """Tạo file Excel để tải về: (1) điền loại thể lực đã tính vào cột 'phanloai' (Phân Loại thể lực);
+    (2) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
+    Trả về bytes của file .xlsx."""
+    wb = openpyxl.load_workbook(BytesIO(file_bytes))   # giữ nguyên, KHÔNG data_only (để lưu lại được)
+    ws = wb[SHEET_MAIN]
+
+    # Tìm cột 'phanloai' (Phân Loại thể lực) để điền kết quả
+    phanloai_col = None
+    for c in range(1, ws.max_column + 1):
+        if clean_ws(ws.cell(row=CODE_ROW, column=c).value) == "phanloai":
+            phanloai_col = c
+            break
+    if phanloai_col:
+        for r, val in theluc_by_row.items():
+            ws.cell(row=r, column=phanloai_col).value = val
+
+    # Gom các issue theo ô (row, col_letter) để 1 ô có thể có nhiều ghi chú
+    if issues_df is not None and not issues_df.empty:
+        by_cell = {}
+        for _, row in issues_df.iterrows():
+            col_letter = row.get("Cột")
+            r = row.get("Dòng Excel")
+            if not col_letter or r is None:
+                continue
+            key = (int(r), str(col_letter))
+            by_cell.setdefault(key, {"msgs": [], "has_error": False})
+            by_cell[key]["msgs"].append(f"[{row['Mức độ']}] {row['Chi tiết']}")
+            if row["Mức độ"] == "Lỗi":
+                by_cell[key]["has_error"] = True
+
+        for (r, col_letter), info in by_cell.items():
+            cell = ws[f"{col_letter}{r}"]
+            cell.fill = FILL_ERROR if info["has_error"] else FILL_WARN
+            text = "\n".join(info["msgs"])
+            cm = Comment(text, "Công cụ kiểm tra")
+            cm.width = 320
+            cm.height = max(60, 18 * (len(info["msgs"]) + 1))
+            cell.comment = cm
+
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue()
