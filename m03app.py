@@ -92,6 +92,10 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   khác ở trên.
 - **Giới tính Nam**: cảnh báo nếu vẫn có dữ liệu ở các ô chỉ dành cho nữ (tiền sử thai sản, toàn bộ
   khối Sản khoa/Phụ khoa).
+- **3 cặp đo thị lực Mắt** (không kính / kính lỗ / có kính, mỗi cặp gồm mắt phải + mắt trái): phải
+  điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với 2 cặp "kính lỗ" và
+  "có kính" — điền cặp này thì không điền cặp kia.
+- **`giadinh_macbenh` và `giadinh_danhsachbenh_icd`** chỉ ở mức **cảnh báo**, không chặn nhập liệu.
 - **Khoảng trắng ẩn** (dấu cách không ngắt `\\xa0`, ký tự rộng-0...) trong bất kỳ ô chữ nào — dấu vết
   hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác.
 - **Cấu trúc file**: phát hiện nếu 2 cột vô tình dùng trùng 1 mã field (lỗi hiếm gặp trong file gốc).
