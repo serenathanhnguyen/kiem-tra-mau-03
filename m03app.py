@@ -9,7 +9,8 @@ st.set_page_config(page_title="Kiểm tra file Mẫu 03 - Medinet", page_icon="�
 st.title("✅ Kiểm tra file Excel Mẫu 03 (KSKDK) trước khi nhập Medinet")
 st.caption(
     "Tải lên file Excel dữ liệu bệnh nhân (đúng cấu trúc file mẫu Medinet — sheet "
-    f"**{SHEET_MAIN}**, dòng 2 là nhãn, dòng 4 là mã field, dữ liệu từ dòng 5). "
+    f"**{SHEET_MAIN}**, có dòng nhãn và dòng mã field/keyword như file mẫu — công cụ tự nhận diện "
+    "dòng mã field dù nằm ở dòng số mấy, không bắt buộc phải là dòng 4). "
     "Công cụ sẽ kiểm tra định dạng, ô bắt buộc, khớp danh mục (Tỉnh/Phường xã, Nghề nghiệp, "
     "Nơi công tác, Đối tượng khám...), CCCD trùng, và khoảng trắng ẩn."
 )
@@ -20,7 +21,7 @@ if uploaded is not None:
     try:
         with st.spinner("Đang kiểm tra..."):
             (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
-             danhmucdenghi_by_row, denghi_by_row) = validate_workbook(uploaded.getvalue())
+             danhmucdenghi_by_row, denghi_by_row, data_fixes_by_row) = validate_workbook(uploaded.getvalue())
     except Exception as e:
         st.error(f"Không đọc được file: {e}")
         st.stop()
@@ -54,19 +55,24 @@ if uploaded is not None:
     # File Excel đã kiểm tra: đã điền phân loại thể lực + tô màu/ghi chú ô lỗi (luôn có, kể cả khi không lỗi)
     try:
         annotated = annotate_workbook(
-            uploaded.getvalue(), issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row
+            uploaded.getvalue(), issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row,
+            data_fixes_by_row
         )
         st.download_button(
-            "⬇ Tải file Excel đã kiểm tra (đã điền phân loại thể lực + Kết luận/Đề nghị còn trống + đánh dấu ô lỗi)",
+            "⬇ Tải file Excel đã kiểm tra (đã tự sửa dữ liệu + canh giữa + đánh dấu ô lỗi)",
             data=annotated,
             file_name="mau03_da_kiem_tra.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+        n_fixed_rows = len(data_fixes_by_row)
         st.caption(
             f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng, "
             f"đề xuất **Kết luận (danh_muc_de_nghi)** cho {len(danhmucdenghi_by_row)} dòng đang trống, "
-            f"và điền mặc định **'{DE_NGHI_DEFAULT_VALUE}'** cho ô **de_nghi** ở {len(denghi_by_row)} dòng đang trống. "
-            "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết."
+            f"điền mặc định **'{DE_NGHI_DEFAULT_VALUE}'** cho ô **de_nghi** ở {len(denghi_by_row)} dòng đang trống, "
+            f"và áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...) "
+            f"cho {n_fixed_rows} dòng. Toàn bộ vùng dữ liệu đã được **canh giữa**. "
+            "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết. "
+            "File không bị khoá — vẫn filter, xoá, copy, paste bình thường."
         )
     except Exception as e:
         st.warning(f"Không tạo được file Excel đã đánh dấu: {e}")
@@ -129,10 +135,32 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
     khám"). Theo thứ tự — luôn điền ra 1 trong 3 giá trị, không để trống:
     1) có ít nhất 1 khối `*_phanloai` > 1 **và** có ít nhất 1 `*_chandoanxacdinh_icd` được điền →
        "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ";
-    2) ngược lại, có ít nhất 1 `*_phanloai` có giá trị (1..5) **và** có ít nhất 1 `*_chandoansobo_icd`
-       được điền → "Có yếu tố nguy cơ, cần theo dõi thêm";
-    3) còn lại → "Bình thường, hẹn khám định kỳ lần sau".
+    2) ngược lại, có ít nhất 1 `*_chandoansobo_icd` được điền → "Có yếu tố nguy cơ, cần theo dõi
+       thêm"; 3) còn lại → "Bình thường, hẹn khám định kỳ lần sau".
   - Ô **`de_nghi`** (Đề nghị, ghi rõ): nếu đang trống → điền mặc định "Tái khám định kỳ".
+- **Tự động sửa dữ liệu khác trong file Excel tải về** (không tính là lỗi/cảnh báo, chỉ áp dụng khi xuất file):
+  - **Canh giữa**: toàn bộ vùng dữ liệu (từ dòng đầu tiên có dữ liệu đến dòng cuối, các cột đã map
+    được mã field) được canh giữa theo cả chiều ngang và dọc.
+  - **Giới tính Nam** (cột `gioi_tinh` = 1): các ô chỉ dành cho nữ (thai sản, toàn bộ khối Sản khoa/
+    Phụ khoa — cột AY, AZ, CV đến DE) được **xoá trắng** nếu lỡ có dữ liệu.
+  - **Giới tính Nữ** (cột `gioi_tinh` = 2): ô "Có thai sản không" (cột AY) nếu đang là 0 hoặc 1 thì
+    giữ nguyên; nếu là chữ "Không" thì chỉnh về **0**.
+  - **Cột AA đến AU** (21 câu tiền sử bệnh dạng Có/Không): chỉ nhận 0 hoặc 1 — ô đã điền giá trị
+    khác "1" thì chỉnh về **0**.
+  - **Chỉ số sinh tồn** (cột BA-BF: chiều cao 120-210, cân nặng 25-200, nhịp thở 12-20, mạch 60-100,
+    huyết áp tâm thu 90-120, huyết áp tâm trương 60-80): nếu giá trị nằm **ngoài khoảng cho phép** thì
+    báo **Cảnh báo** kèm ghi chú, và ô được tô màu trong file tải về.
+  - **Các cột `*_chandoansobo_icd` / `*_chandoanxacdinh_icd`** (phạm vi cột BI đến DB): nếu giá trị là
+    **0** thì chuyển thành **trống (null)**.
+  - **Loại khám** (cột ED): nếu đang trống → điền mặc định **= 2**.
+  - **Số lượng hồng cầu** (cột EE, `kskdk_xnm_slhc`): nếu đang trống → điền mặc định **= 0**.
+- **Nhận diện cấu trúc file linh hoạt**: công cụ tự tìm dòng "mã field" (keyword) trong 15 dòng đầu
+  của sheet thay vì cố định ở dòng 4 — chỉ cần file upload có dòng keyword giống file mẫu (dựa trên
+  các mã quen thuộc như `ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`), dữ liệu sẽ được
+  mapping đúng theo keyword bất kể nằm ở dòng số mấy. Nếu không tự nhận diện được, công cụ dùng mặc
+  định dòng 4 và báo ghi chú ở phần "Ghi chú về cấu trúc file".
+- **File Excel tải về không bị khoá/bảo vệ**: vẫn có thể filter, xoá dòng/cột, copy, paste bình
+  thường như file gốc.
 - **3 cặp đo thị lực Mắt** (không kính / kính lỗ / có kính, mỗi cặp gồm mắt phải + mắt trái): phải
   điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với 2 cặp "kính lỗ" và
   "có kính" — điền cặp này thì không điền cặp kia.
