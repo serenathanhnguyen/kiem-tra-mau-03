@@ -295,6 +295,12 @@ def compute_data_fixes_for_row(raw_by_code):
       - 'kskdk_xnm_slhc' — Số lượng hồng cầu (cột EE): trống thì điền = 0.
       - '*_tuchoikham' (cột CV: sankhoa_tuchoikham, cột DA: phukhoa_tuchoikham) = 1: cột phanloai
         tương ứng (CZ: sankhoa_phanloai, DE: phukhoa_phanloai) chuyển null.
+      - Ngược lại, nếu '*_tuchoikham' (CV/DA) đang TRỐNG và cột phanloai tương ứng (CZ/DE) cũng đang
+        TRỐNG, thì chỉnh cột phanloai (CZ/DE) = 1 và cột chuaphathienbatthuong tương ứng (CW: sankhoa,
+        DB: phukhoa) = 1. (Không áp dụng cho Nam — 2 khối này chỉ dành cho nữ, xem quy tắc gioi_tinh=1
+        ở trên.)
+      - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac' (cột R) đang trống → điền 'doi_tuong_kham'
+        (cột C) = 3.
     """
     fixes = {}
 
@@ -335,9 +341,15 @@ def compute_data_fixes_for_row(raw_by_code):
     if blank("kskdk_xnm_slhc"):
         fixes["kskdk_xnm_slhc"] = 0
 
-    for tuchoi_c, _check_c, _sobo_c, _xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
+    for tuchoi_c, check_c, _sobo_c, _xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
         if (not blank(tuchoi_c)) and val(tuchoi_c) == "1":
             fixes[phanloai_c] = None
+        elif gt != "1" and blank(tuchoi_c) and blank(phanloai_c):
+            fixes[phanloai_c] = 1
+            fixes[check_c] = 1
+
+    if blank("nghenghiep_code") or blank("noi_cong_tac"):
+        fixes["doi_tuong_kham"] = 3
 
     return fixes
 
