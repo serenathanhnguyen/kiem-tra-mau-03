@@ -124,12 +124,13 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   động) rồi **điền sẵn vào cột này** trong file tải về. Vì file không có cột vòng ngực nên chỉ dùng 2
   chỉ số, lấy loại kém hơn.
 - **Tự đề xuất điền khi đang để trống** (chỉ áp dụng trong file Excel tải về, không tính là lỗi/cảnh báo):
-  - Ô **Kết luận** (`danh_muc_de_nghi`): xét các ô `*_phanloai` của 13 khối chuyên khoa (và Sản
-    khoa/Phụ khoa, trừ khối đã chọn "từ chối khám"). Nếu **tất cả** đều là **Loại 1** → điền "Bình
-    thường, hẹn khám định kỳ lần sau". Nếu **tất cả** đều là loại **lớn hơn 1** (2-5) VÀ có ít nhất
-    1 ô `*_chandoanxacdinh_icd` hoặc `*_chandoansobo_icd` có giá trị → điền "Có yếu tố nguy cơ, cần
-    theo dõi thêm". Các trường hợp lẫn lộn (vừa có khối Loại 1 vừa có khối lớn hơn 1) thì để trống
-    như cũ, không tự đoán.
+  - Ô **Kết luận** (`danh_muc_de_nghi`): xét các ô `*_phanloai`, `*_chandoansobo_icd`,
+    `*_chandoanxacdinh_icd` của 13 khối chuyên khoa (và Sản khoa/Phụ khoa, trừ khối đã chọn "từ chối
+    khám"). Theo thứ tự — luôn điền ra 1 trong 3 giá trị, không để trống:
+    1) có ít nhất 1 khối `*_phanloai` > 1 **và** có ít nhất 1 `*_chandoanxacdinh_icd` được điền →
+       "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ";
+    2) ngược lại, có ít nhất 1 `*_chandoansobo_icd` được điền → "Có yếu tố nguy cơ, cần theo dõi
+       thêm"; 3) còn lại → "Bình thường, hẹn khám định kỳ lần sau".
   - Ô **`de_nghi`** (Đề nghị, ghi rõ): nếu đang trống → điền mặc định "Tái khám định kỳ".
 - **3 cặp đo thị lực Mắt** (không kính / kính lỗ / có kính, mỗi cặp gồm mắt phải + mắt trái): phải
   điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với 2 cặp "kính lỗ" và
