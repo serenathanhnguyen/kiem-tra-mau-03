@@ -80,9 +80,10 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   chính file Excel (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`).
 - **Ô Kết luận (`danh_muc_de_nghi`)** phải là 1 trong 5 giá trị cố định (Bình thường hẹn khám định kỳ /
   Có yếu tố nguy cơ / Đã có bệnh mạn tính / Chuyển tuyến / Khác).
-- **Đối tượng khám = 2 (Người lao động chính thức)**: bắt buộc nhập `nghenghiep_code`, `noi_cong_tac`,
-  `noi_cong_tac_xa_phuong`; riêng `noi_cong_tac` lúc này chỉ cần có dữ liệu, không đối chiếu danh mục
-  `NoiLamViec` (với đối tượng khác thì `noi_cong_tac` vẫn đối chiếu danh mục như cũ).
+- **Đối tượng khám = 1 (Sinh viên, học viên) hoặc = 2 (Người lao động chính thức)**: bắt buộc nhập
+  `nghenghiep_code`, `noi_cong_tac`, `noi_cong_tac_xa_phuong`; riêng `noi_cong_tac` lúc này chỉ cần
+  có dữ liệu, không đối chiếu danh mục `NoiLamViec` (với đối tượng khác thì `noi_cong_tac` không bắt
+  buộc, có thể để trống).
 - **13 khối chuyên khoa ở tab Khám lâm sàng** (4 ô: chưa phát hiện bất thường / chẩn đoán sơ bộ /
   chẩn đoán xác định / phân loại): chọn "chưa phát hiện bất thường" thì không được có ICD và phân
   loại phải là Loại 1; có ICD (sơ bộ hoặc xác định) thì phân loại phải từ Loại 2 trở lên; ô phân
