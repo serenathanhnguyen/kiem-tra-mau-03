@@ -202,16 +202,15 @@ def compute_the_luc_for_row(raw_by_code):
 def compute_danh_muc_de_nghi_for_row(raw_by_code):
     """Tự suy giá trị cho ô Kết luận ('danh_muc_de_nghi') khi đang để trống, dựa trên 13 khối chuyên
     khoa + Sản khoa/Phụ khoa (khối đã chọn 'từ chối khám' thì không tính vào điều kiện — không có dữ
-    liệu để đánh giá). Quy tắc Jo bổ sung, theo đúng thứ tự:
-      1) Nếu TẤT CẢ các cột '*_phanloai' liên quan đều là Loại 1
-         → "Bình thường, hẹn khám định kỳ lần sau".
-      2) Ngược lại, nếu TẤT CẢ các cột '*_phanloai' liên quan đều là loại > 1 (2-5):
-         2a) nếu có ít nhất 1 cột '*_chandoanxacdinh_icd' có giá trị
-             → "Có yếu tố nguy cơ, cần theo dõi thêm";
-         2b) else nếu có ít nhất 1 cột '*_chandoansobo_icd' có giá trị
-             → "Có yếu tố nguy cơ, cần theo dõi thêm".
-      3) Không rơi vào 2 trường hợp trên (vd: các khối lẫn lộn Loại 1 và Loại >1) → trả về None,
-         không tự điền."""
+    liệu để đánh giá). Quy tắc Jo bổ sung, theo đúng thứ tự (luôn cho ra 1 trong 3 giá trị, không để
+    trống nữa):
+      1) Nếu có ít nhất 1 cột '*_phanloai' liên quan là loại LỚN HƠN 1, VÀ có ít nhất 1 cột
+         '*_chandoanxacdinh_icd' có giá trị
+         → "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ".
+      2) Ngược lại, nếu có ít nhất 1 cột '*_chandoansobo_icd' có giá trị
+         → "Có yếu tố nguy cơ, cần theo dõi thêm".
+      3) Còn lại (không rơi vào 2 trường hợp trên)
+         → "Bình thường, hẹn khám định kỳ lần sau"."""
 
     def blank(c):
         return is_blank(raw_by_code.get(c))
@@ -233,20 +232,17 @@ def compute_danh_muc_de_nghi_for_row(raw_by_code):
         sobo_codes.append(sobo_c)
         xacdinh_codes.append(xacdinh_c)
 
-    phanloai_values = [val(c) for c in phanloai_codes]
-    if not phanloai_values:
-        return None
+    has_phanloai_gt1 = any(val(c) in ("2", "3", "4", "5") for c in phanloai_codes)
+    has_xacdinh = any(not blank(c) for c in xacdinh_codes)
+    has_sobo = any(not blank(c) for c in sobo_codes)
 
-    if all(v == "1" for v in phanloai_values):
-        return "Bình thường, hẹn khám định kỳ lần sau"
+    if has_phanloai_gt1 and has_xacdinh:
+        return "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ"
 
-    if all(v in ("2", "3", "4", "5") for v in phanloai_values):
-        if any(not blank(c) for c in xacdinh_codes):
-            return "Có yếu tố nguy cơ, cần theo dõi thêm"
-        if any(not blank(c) for c in sobo_codes):
-            return "Có yếu tố nguy cơ, cần theo dõi thêm"
+    if has_sobo:
+        return "Có yếu tố nguy cơ, cần theo dõi thêm"
 
-    return None
+    return "Bình thường, hẹn khám định kỳ lần sau"
 
 
 # ============================================================
