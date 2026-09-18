@@ -5,16 +5,16 @@ from io import BytesIO
 import openpyxl
 import pandas as pd
 from openpyxl.utils import get_column_letter
-from openpyxl.styles import PatternFill
+from openpyxl.styles import PatternFill, Alignment
 from openpyxl.comments import Comment
 
 # ============================================================
 # CẤU HÌNH CẤU TRÚC FILE MẪU 03
 # ============================================================
 SHEET_MAIN = "ThongTinHanhChinh"
-LABEL_ROW = 2          # dòng nhãn (có dấu * cho cột bắt buộc)
-CODE_ROW = 4            # dòng mã field (name) — dùng để map, giống script Tampermonkey
-DATA_START_ROW = 5      # dữ liệu bệnh nhân bắt đầu từ dòng này
+LABEL_ROW = 2          # dòng nhãn mặc định (có dấu * cho cột bắt buộc) — dùng khi không tự nhận diện được
+CODE_ROW = 4            # dòng mã field (keyword) mặc định — dùng khi không tự nhận diện được
+DATA_START_ROW = 5      # dữ liệu bệnh nhân bắt đầu từ dòng này (mặc định)
 
 REF_SHEETS = {
     "DoiTuongKham": {"name_col": "Đối Tượng", "id_col": "Mã"},
@@ -90,8 +90,8 @@ ICD_RE = re.compile(r"^[A-TV-Z][0-9]{2}(\.[0-9]{1,2})?$", re.IGNORECASE)
 CCCD_RE = re.compile(r"^\d{12}$")
 PHONE_RE = re.compile(r"^0\d{9,10}$")
 NBSP_CHARS = [
-    "\xa0", "\u200b", "\ufeff", "\u2007", "\u202f",   # NBSP, zero-width space, BOM, figure space, narrow NBSP
-    "\u200c", "\u200d", "\u2060", "\u00ad",             # zero-width non-joiner/joiner, word joiner, soft hyphen
+    "\xa0", "​", "﻿", " ", " ",   # NBSP, zero-width space, BOM, figure space, narrow NBSP
+    "‌", "‍", "⁠", "­",             # zero-width non-joiner/joiner, word joiner, soft hyphen
 ]
 
 # 5 giá trị hợp lệ của ô Kết luận (đúng theo danh sách Jo cung cấp)
@@ -160,6 +160,37 @@ THE_LUC_TABLES = {
 
 FILL_ERROR = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")   # đỏ nhạt
 FILL_WARN = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")     # vàng nhạt
+
+# ============================================================
+# QUY TẮC "TỰ SỬA DỮ LIỆU" TRONG FILE XUẤT RA (annotate_workbook)
+# Vị trí cột theo đúng file mẫu chuẩn Medinet (cột AA-AU, BA-BF, BI-DB, ED, EE...).
+# Chỉ ảnh hưởng file Excel tải về — KHÔNG ảnh hưởng bảng lỗi/cảnh báo (vẫn tính trên giá trị gốc).
+# ============================================================
+
+# Cột AA-AU: 21 câu tiền sử bệnh dạng Có(1)/Không(0). Giá trị hợp lệ CHỈ là 0 hoặc 1 — ô đã có dữ
+# liệu mà khác "1" thì chỉnh về 0.
+BINARY_STRICT_FIELDS = [
+    "benh_5nam", "benh_than_kinh", "benh_mat", "benh_tai", "benh_tim", "pt_tim_mach",
+    "tang_ha", "kho_tho", "benh_phoi", "benh_than", "nghien_ruou_bia", "dai_thao_duong",
+    "benh_tam_than", "mat_y_thuc", "ngat_chong_mat", "benh_tieu_hoa", "roi_loan_giac_ngu",
+    "tai_bien_mach_mau_nao", "cot_song", "su_dung_ruou_bia", "su_dung_ma_tuy",
+]
+
+# Cột BA-BF: khoảng giá trị hợp lệ cho các chỉ số sinh tồn — ngoài khoảng thì tô màu + ghi chú cảnh báo
+VITAL_SIGN_RANGES = {
+    "chieucao": (120, 210),
+    "cannang": (25, 200),
+    "nhiptho": (12, 20),
+    "mach": (60, 100),
+    "huyetaptamthu": (90, 120),
+    "huyetaptamtruong": (60, 80),
+}
+
+# Nhận diện dòng "mã field" (keyword) một cách linh hoạt, không cố định ở dòng 4 — file upload chỉ
+# cần có dòng keyword giống file mẫu (bất kể nằm ở dòng số mấy) thì dữ liệu vẫn được mapping đúng.
+CODE_PATTERN_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+CODE_ROW_ANCHOR_FIELDS = {"ho_ten", "dinh_danh_ca_nhan", "ngay_kham", "gioi_tinh"}
+LAYOUT_SEARCH_ROWS = 15  # số dòng đầu tiên quét để tìm dòng mã field
 
 
 def _classify_metric(value, bounds):
@@ -250,6 +281,61 @@ def compute_danh_muc_de_nghi_for_row(raw_by_code):
     return "Bình thường, hẹn khám định kỳ lần sau"
 
 
+def compute_data_fixes_for_row(raw_by_code):
+    """Trả về dict {mã field: giá trị mới} cần ghi đè vào file Excel xuất ra cho 1 dòng — các quy
+    tắc 'tự sửa dữ liệu' Jo bổ sung (chỉ áp dụng cho file tải về, KHÔNG ảnh hưởng bảng lỗi/cảnh báo
+    vốn vẫn tính trên giá trị gốc đã upload). Giá trị None trong dict nghĩa là XOÁ TRẮNG ô đó.
+      - gioi_tinh = 1 (Nam): xoá trắng các ô chỉ dành cho nữ (thai_san_co_khong, thai_san_liet_ke,
+        và toàn bộ khối Sản khoa/Phụ khoa — cột AY, AZ, CV..DE).
+      - gioi_tinh = 2 (Nữ): ô 'thai_san_co_khong' (cột AY) nếu là chữ "Không" thì chỉnh thành 0;
+        nếu đã là 0/1 thì giữ nguyên.
+      - Cột AA-AU (các câu tiền sử bệnh 0/1): đã điền giá trị khác "1" thì chỉnh về 0.
+      - Các cột '*_chandoansobo_icd' / '*_chandoanxacdinh_icd' (cột BI-DB): giá trị 0 thì chuyển null.
+      - 'loai_kham' (cột ED): trống thì điền = 2.
+      - 'kskdk_xnm_slhc' — Số lượng hồng cầu (cột EE): trống thì điền = 0.
+    """
+    fixes = {}
+
+    def blank(c):
+        return is_blank(raw_by_code.get(c))
+
+    def val(c):
+        return clean_ws(raw_by_code.get(c))
+
+    gt = val("gioi_tinh")
+
+    if gt == "1":
+        for code in MALE_EXCLUDED_FIELDS:
+            if not blank(code):
+                fixes[code] = None
+    elif gt == "2":
+        if not blank("thai_san_co_khong") and norm_key(raw_by_code.get("thai_san_co_khong")) == "không":
+            fixes["thai_san_co_khong"] = 0
+
+    for code in BINARY_STRICT_FIELDS:
+        if not blank(code) and val(code) != "1":
+            fixes[code] = 0
+
+    icd_fix_codes = []
+    for _check_c, sobo_c, xacdinh_c, _phanloai_c in SPECIALTY_BLOCKS_4FIELD.values():
+        icd_fix_codes.extend([sobo_c, xacdinh_c])
+    for _tuchoi_c, _check_c, sobo_c, xacdinh_c, _phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
+        icd_fix_codes.extend([sobo_c, xacdinh_c])
+    for code in icd_fix_codes:
+        if code in fixes:
+            continue  # đã bị xoá trắng ở quy tắc giới tính (Nam) — khỏi ghi đè lại
+        if _is_literal_zero(raw_by_code.get(code)):
+            fixes[code] = None
+
+    if blank("loai_kham"):
+        fixes["loai_kham"] = 2
+
+    if blank("kskdk_xnm_slhc"):
+        fixes["kskdk_xnm_slhc"] = 0
+
+    return fixes
+
+
 # ============================================================
 # HÀM TIỆN ÍCH
 # ============================================================
@@ -334,6 +420,74 @@ def to_number(value):
             return None
 
 
+def _is_literal_zero(raw_value):
+    """True nếu ô chứa đúng giá trị 0 (số 0 thật, hoặc chuỗi '0'/'0.0'/'0,0') — dùng cho quy tắc
+    xoá trắng các ô ICD (*_chandoansobo_icd / *_chandoanxacdinh_icd) khi lỡ điền 0."""
+    if raw_value is None:
+        return False
+    if isinstance(raw_value, (int, float)):
+        return raw_value == 0
+    s = clean_ws(raw_value)
+    return s in ("0", "0.0", "0,0")
+
+
+# ============================================================
+# NHẬN DIỆN CẤU TRÚC FILE (dòng nhãn / dòng mã field / dòng bắt đầu dữ liệu)
+# ============================================================
+
+def detect_layout_rows(ws):
+    """Tự nhận diện dòng 'mã field' (keyword) trong các dòng đầu của sheet, không phụ thuộc cố định
+    vào dòng 4 — theo yêu cầu Jo: file upload chỉ cần CÓ dòng keyword giống file mẫu, bất kể nằm ở
+    dòng số mấy, dữ liệu vẫn được mapping đúng theo keyword.
+
+    Heuristic: dòng mã field là dòng có nhiều ô dạng snake_case (chữ thường/số/gạch dưới) nhất, và
+    phải chứa ít nhất 2 trong số các mã 'mỏ neo' quen thuộc (ho_ten, dinh_danh_ca_nhan, ngay_kham,
+    gioi_tinh) để tránh nhận nhầm một dòng dữ liệu thành dòng mã.
+
+    Trả về (label_row, code_row, data_start_row, note) — note khác None nếu phải dùng mặc định
+    (dòng 2/4/5) do không tự nhận diện được, hoặc để thông báo đã nhận diện ở dòng khác dòng 4."""
+    best_row, best_score = None, 0
+    for r in range(1, min(LAYOUT_SEARCH_ROWS, ws.max_row) + 1):
+        codes_in_row = set()
+        score = 0
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(row=r, column=c).value
+            if not v:
+                continue
+            s = str(v).strip()
+            if CODE_PATTERN_RE.match(s):
+                score += 1
+                codes_in_row.add(s)
+        anchor_hits = len(CODE_ROW_ANCHOR_FIELDS & codes_in_row)
+        if anchor_hits >= 2 and score > best_score:
+            best_score = score
+            best_row = r
+
+    if best_row is None:
+        return LABEL_ROW, CODE_ROW, DATA_START_ROW, (
+            f"Không tự nhận diện được dòng mã field (keyword) trong {LAYOUT_SEARCH_ROWS} dòng đầu — "
+            f"dùng mặc định dòng {CODE_ROW}. Nếu file có cấu trúc khác, kết quả kiểm tra có thể không chính xác."
+        )
+
+    code_row = best_row
+    label_row = code_row - 2 if code_row - 2 >= 1 else LABEL_ROW
+    data_start_row = code_row + 1
+    note = None
+    if code_row != CODE_ROW:
+        note = f"Đã tự nhận diện dòng mã field (keyword) ở dòng {code_row} (khác dòng {CODE_ROW} mặc định)."
+    return label_row, code_row, data_start_row, note
+
+
+def _build_code_col_map(ws, code_row):
+    """Quét 1 lần dòng mã field, trả về dict {mã field: số thứ tự cột}."""
+    m = {}
+    for c in range(1, ws.max_column + 1):
+        code = clean_ws(ws.cell(row=code_row, column=c).value)
+        if code and code not in m:
+            m[code] = c
+    return m
+
+
 # ============================================================
 # ĐỌC CẤU TRÚC FILE + CÁC SHEET DANH MỤC
 # ============================================================
@@ -371,14 +525,14 @@ def load_reference_sheets(wb):
     return refs
 
 
-def read_column_defs(ws):
+def read_column_defs(ws, label_row=LABEL_ROW, code_row=CODE_ROW):
     """Đọc dòng nhãn + dòng mã, trả về list dict {col, label, code, required}."""
     cols = []
     seen_codes = {}
     dup_codes = []
     for c in range(2, ws.max_column + 1):  # bỏ cột 1 (STT)
-        label = ws.cell(row=LABEL_ROW, column=c).value
-        code = ws.cell(row=CODE_ROW, column=c).value
+        label = ws.cell(row=label_row, column=c).value
+        code = ws.cell(row=code_row, column=c).value
         label_s = clean_ws(label) if label else ""
         code_s = clean_ws(code) if code else ""
         if not label_s and not code_s:
@@ -399,10 +553,10 @@ def read_column_defs(ws):
     return cols, dup_codes
 
 
-def find_last_data_row(ws, key_cols):
+def find_last_data_row(ws, key_cols, data_start_row=DATA_START_ROW):
     """Tìm dòng cuối cùng có dữ liệu ở cột Họ tên / CCCD, để không quét hàng nghìn dòng trống."""
-    last = DATA_START_ROW - 1
-    for r in range(DATA_START_ROW, ws.max_row + 1):
+    last = data_start_row - 1
+    for r in range(data_start_row, ws.max_row + 1):
         if any(not is_blank(ws.cell(row=r, column=c).value) for c in key_cols):
             last = r
     return last
@@ -499,6 +653,10 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
             n = to_number(raw_value)
             if n is None:
                 issues.append({"level": "Lỗi", "message": f"'{text}' không phải là số hợp lệ"})
+            elif code in VITAL_SIGN_RANGES:
+                lo, hi = VITAL_SIGN_RANGES[code]
+                if not (lo <= n <= hi):
+                    issues.append({"level": "Cảnh báo", "message": f"Giá trị '{text}' nằm ngoài khoảng cho phép ({lo}-{hi})"})
         return issues
 
     # ---- Kết luận: chọn đúng 1 trong 5 giá trị ----
@@ -748,13 +906,14 @@ def validate_workbook(file_bytes):
         raise ValueError(f"Không tìm thấy sheet '{SHEET_MAIN}' trong file — đây có phải đúng file Mẫu 03 không?")
 
     ws = wb[SHEET_MAIN]
-    col_defs, dup_codes = read_column_defs(ws)
+    label_row, code_row, data_start_row, layout_note = detect_layout_rows(ws)
+    col_defs, dup_codes = read_column_defs(ws, label_row, code_row)
     col_defs_by_code = {c["code"]: c for c in col_defs if c["code"]}
     refs = load_reference_sheets(wb)
 
     key_codes = ["ho_ten", "dinh_danh_ca_nhan"]
     key_cols = [c["col"] for c in col_defs if c["code"] in key_codes]
-    last_row = find_last_data_row(ws, key_cols) if key_cols else ws.max_row
+    last_row = find_last_data_row(ws, key_cols, data_start_row) if key_cols else ws.max_row
 
     ho_ten_col = next((c["col"] for c in col_defs if c["code"] == "ho_ten"), None)
     cccd_col = next((c["col"] for c in col_defs if c["code"] == "dinh_danh_ca_nhan"), None)
@@ -764,8 +923,9 @@ def validate_workbook(file_bytes):
     theluc_by_row = {}          # dòng Excel -> loại thể lực đã tính (1-5)
     danhmucdenghi_by_row = {}   # dòng Excel -> giá trị đề xuất cho ô Kết luận (khi đang trống)
     denghi_by_row = {}          # dòng Excel -> giá trị đề xuất cho ô 'de_nghi' (khi đang trống)
+    data_fixes_by_row = {}      # dòng Excel -> {mã field: giá trị mới} theo các quy tắc tự sửa dữ liệu
 
-    for r in range(DATA_START_ROW, last_row + 1):
+    for r in range(data_start_row, last_row + 1):
         if all(is_blank(ws.cell(row=r, column=c["col"]).value) for c in col_defs):
             continue  # dòng trống hoàn toàn giữa các dòng có dữ liệu — bỏ qua
 
@@ -836,6 +996,10 @@ def validate_workbook(file_bytes):
         if is_blank(raw_by_code.get("de_nghi")):
             denghi_by_row[r] = DE_NGHI_DEFAULT_VALUE
 
+        fixes = compute_data_fixes_for_row(raw_by_code)
+        if fixes:
+            data_fixes_by_row[r] = fixes
+
     for cccd, rows in cccd_seen.items():
         if len(rows) > 1:
             for r in rows:
@@ -852,6 +1016,8 @@ def validate_workbook(file_bytes):
                 })
 
     structural_notes = []
+    if layout_note:
+        structural_notes.append(layout_note)
     for col1, col2, code in dup_codes:
         structural_notes.append(
             f"Mã field '{code}' xuất hiện ở CẢ cột {get_column_letter(col1)} lẫn {get_column_letter(col2)} "
@@ -859,49 +1025,67 @@ def validate_workbook(file_bytes):
         )
 
     issues_df = pd.DataFrame(issues)
-    n_rows_checked = max(0, last_row - DATA_START_ROW + 1)
+    n_rows_checked = max(0, last_row - data_start_row + 1)
     return (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
-            danhmucdenghi_by_row, denghi_by_row)
+            danhmucdenghi_by_row, denghi_by_row, data_fixes_by_row)
 
 
-def _find_col_by_code(ws, code):
-    for c in range(1, ws.max_column + 1):
-        if clean_ws(ws.cell(row=CODE_ROW, column=c).value) == code:
-            return c
-    return None
-
-
-def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row=None, denghi_by_row=None):
+def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row=None,
+                       denghi_by_row=None, data_fixes_by_row=None):
     """Tạo file Excel để tải về:
     (1) điền loại thể lực đã tính vào cột 'phanloai' (Phân Loại thể lực);
     (2) điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') và ô 'de_nghi' khi đang để trống;
-    (3) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
+    (3) áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...);
+    (4) canh giữa dữ liệu trong toàn bộ vùng dữ liệu;
+    (5) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
+    File kết quả KHÔNG bị khoá/bảo vệ — vẫn filter, xoá, copy, paste bình thường.
     Trả về bytes của file .xlsx."""
     danhmucdenghi_by_row = danhmucdenghi_by_row or {}
     denghi_by_row = denghi_by_row or {}
+    data_fixes_by_row = data_fixes_by_row or {}
 
     wb = openpyxl.load_workbook(BytesIO(file_bytes))   # giữ nguyên, KHÔNG data_only (để lưu lại được)
     ws = wb[SHEET_MAIN]
 
-    # Tìm cột 'phanloai' (Phân Loại thể lực) để điền kết quả
-    phanloai_col = _find_col_by_code(ws, "phanloai")
+    label_row, code_row, data_start_row, _note = detect_layout_rows(ws)
+    col_map = _build_code_col_map(ws, code_row)
+
+    # (1) Tìm cột 'phanloai' (Phân Loại thể lực) để điền kết quả
+    phanloai_col = col_map.get("phanloai")
     if phanloai_col:
         for r, val in theluc_by_row.items():
             ws.cell(row=r, column=phanloai_col).value = val
 
-    # Điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') khi đang để trống
-    danh_muc_de_nghi_col = _find_col_by_code(ws, "danh_muc_de_nghi")
+    # (2) Điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') khi đang để trống
+    danh_muc_de_nghi_col = col_map.get("danh_muc_de_nghi")
     if danh_muc_de_nghi_col:
         for r, val in danhmucdenghi_by_row.items():
             ws.cell(row=r, column=danh_muc_de_nghi_col).value = val
 
     # Điền giá trị mặc định cho ô 'de_nghi' (Đề nghị, ghi rõ) khi đang để trống
-    de_nghi_col = _find_col_by_code(ws, "de_nghi")
+    de_nghi_col = col_map.get("de_nghi")
     if de_nghi_col:
         for r, val in denghi_by_row.items():
             ws.cell(row=r, column=de_nghi_col).value = val
 
-    # Gom các issue theo ô (row, col_letter) để 1 ô có thể có nhiều ghi chú
+    # (3) Các quy tắc tự sửa dữ liệu khác — giới tính (AY/AZ/CV-DE), tiền sử bệnh 0/1 (AA-AU),
+    # ICD=0 -> null (BI-DB), loại khám (ED) mặc định 2, số lượng hồng cầu (EE) mặc định 0
+    for r, fixes in data_fixes_by_row.items():
+        for code, new_val in fixes.items():
+            col = col_map.get(code)
+            if col:
+                ws.cell(row=r, column=col).value = new_val
+
+    # (4) Canh giữa dữ liệu trong toàn bộ vùng dữ liệu đã map được mã field
+    key_cols = [c for code, c in col_map.items() if code in ("ho_ten", "dinh_danh_ca_nhan")]
+    last_row = find_last_data_row(ws, key_cols, data_start_row) if key_cols else ws.max_row
+    last_col = max(col_map.values()) if col_map else ws.max_column
+    center_align = Alignment(horizontal="center", vertical="center")
+    for r in range(data_start_row, last_row + 1):
+        for c in range(1, last_col + 1):
+            ws.cell(row=r, column=c).alignment = center_align
+
+    # (5) Gom các issue theo ô (row, col_letter) để 1 ô có thể có nhiều ghi chú
     if issues_df is not None and not issues_df.empty:
         by_cell = {}
         for _, row in issues_df.iterrows():
