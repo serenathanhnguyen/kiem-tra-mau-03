@@ -89,9 +89,13 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
 - **Các ô chọn 1 giá trị cố định**: giới tính, nhóm máu, yếu tố Rh, loại khám, phân loại thể lực (1-5),
   các ô "Chưa phát hiện bất thường" (0/1), các câu tiền sử bệnh Có/Không...
 - **Mã ICD**: kiểm tra định dạng giống ICD-10 (cảnh báo nếu lạ, không có danh mục đầy đủ để đối chiếu).
-- **Các ô số** (chiều cao, cân nặng, mạch, huyết áp, xét nghiệm...) phải là số hợp lệ, và nếu nhập
-  dạng chữ thì **phần thập phân phải dùng dấu phẩy (,)** — dấu chấm (.) chỉ chấp nhận khi rõ ràng là
-  phân cách hàng nghìn của số nguyên, còn lại bị coi là sai định dạng theo đúng chuẩn Medinet.
+- **Các ô số không thuộc cận lâm sàng** (chiều cao, cân nặng, mạch, huyết áp, nhịp thở, thị lực mắt)
+  phải là số hợp lệ, và nếu nhập dạng chữ thì **phần thập phân phải dùng dấu phẩy (,)** — dấu chấm (.)
+  chỉ chấp nhận khi rõ ràng là phân cách hàng nghìn của số nguyên, còn lại bị coi là sai định dạng
+  theo đúng chuẩn Medinet.
+- **Các ô số thuộc cận lâm sàng** (xét nghiệm máu, sinh hóa máu, xét nghiệm nước tiểu): nếu có nhập
+  thì **chỉ kiểm tra đúng lỗi dùng dấu chấm (.) thay cho dấu phẩy (,)** ở phần thập phân — không kiểm
+  tra hay cảnh báo gì khác cho các ô này.
 - **Khớp danh mục chặt**: Đối tượng khám, Tỉnh, Phường/Xã (đối chiếu Phường/Xã có thuộc đúng Tỉnh),
   Nghề nghiệp, Nơi công tác, Bệnh tiền sử gia đình — đối chiếu với các sheet danh mục có trong
   chính file Excel (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`).
@@ -119,7 +123,8 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   "có kính" — điền cặp này thì không điền cặp kia.
 - **`giadinh_macbenh` và `giadinh_danhsachbenh_icd`** chỉ ở mức **cảnh báo**, không chặn nhập liệu.
 - **Khoảng trắng ẩn** (dấu cách không ngắt `\\xa0`, ký tự rộng-0...) trong bất kỳ ô chữ nào — dấu vết
-  hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác.
+  hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác. (Không áp
+  dụng cho các ô cận lâm sàng — xem mục riêng ở trên.)
 - **Cấu trúc file**: phát hiện nếu 2 cột vô tình dùng trùng 1 mã field (lỗi hiếm gặp trong file gốc).
 
 Công cụ **không** kiểm tra: nội dung mô tả tự do (ghi chú, mô tả lâm sàng), và không có danh mục
