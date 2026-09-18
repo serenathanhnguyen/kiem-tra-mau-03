@@ -3,7 +3,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from validators import validate_workbook, SHEET_MAIN
+from validators import validate_workbook, annotate_workbook, SHEET_MAIN
 
 st.set_page_config(page_title="Kiểm tra file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
 st.title("✅ Kiểm tra file Excel Mẫu 03 (KSKDK) trước khi nhập Medinet")
@@ -19,7 +19,7 @@ uploaded = st.file_uploader("Chọn file Excel (.xlsx)", type=["xlsx"])
 if uploaded is not None:
     try:
         with st.spinner("Đang kiểm tra..."):
-            issues_df, structural_notes, n_rows_checked, col_defs = validate_workbook(uploaded.getvalue())
+            issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row = validate_workbook(uploaded.getvalue())
     except Exception as e:
         st.error(f"Không đọc được file: {e}")
         st.stop()
@@ -50,11 +50,28 @@ if uploaded is not None:
             df_warn = issues_df[issues_df["Mức độ"] == "Cảnh báo"].drop(columns=["Mức độ"])
             st.dataframe(df_warn, use_container_width=True, hide_index=True)
 
+    # File Excel đã kiểm tra: đã điền phân loại thể lực + tô màu/ghi chú ô lỗi (luôn có, kể cả khi không lỗi)
+    try:
+        annotated = annotate_workbook(uploaded.getvalue(), issues_df, theluc_by_row)
+        st.download_button(
+            "⬇ Tải file Excel đã kiểm tra (đã điền phân loại thể lực + đánh dấu ô lỗi)",
+            data=annotated,
+            file_name="mau03_da_kiem_tra.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        st.caption(
+            f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng. "
+            "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết."
+        )
+    except Exception as e:
+        st.warning(f"Không tạo được file Excel đã đánh dấu: {e}")
+
+    if not issues_df.empty:
         buf = BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             issues_df.to_excel(writer, index=False, sheet_name="Ket_qua_kiem_tra")
         st.download_button(
-            "⬇ Tải báo cáo lỗi (Excel)",
+            "⬇ Tải báo cáo lỗi dạng bảng (Excel)",
             data=buf.getvalue(),
             file_name="bao_cao_kiem_tra_mau03.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -93,6 +110,10 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   khác ở trên.
 - **Giới tính Nam**: cảnh báo nếu vẫn có dữ liệu ở các ô chỉ dành cho nữ (tiền sử thai sản, toàn bộ
   khối Sản khoa/Phụ khoa).
+- **Phân loại thể lực (cột "Phân Loại thể lực")**: công cụ tự tính theo QĐ 1613/BYT từ chiều cao +
+  cân nặng (theo giới tính; bảng học sinh/SV nếu Đối tượng khám = mã 1, còn lại dùng bảng người lao
+  động) rồi **điền sẵn vào cột này** trong file tải về. Vì file không có cột vòng ngực nên chỉ dùng 2
+  chỉ số, lấy loại kém hơn.
 - **3 cặp đo thị lực Mắt** (không kính / kính lỗ / có kính, mỗi cặp gồm mắt phải + mắt trái): phải
   điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với 2 cặp "kính lỗ" và
   "có kính" — điền cặp này thì không điền cặp kia.
