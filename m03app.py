@@ -3,7 +3,7 @@ from io import BytesIO
 import pandas as pd
 import streamlit as st
 
-from validators import validate_workbook, annotate_workbook, SHEET_MAIN, DE_NGHI_DEFAULT_VALUE
+from validators import validate_workbook, annotate_workbook, SHEET_MAIN
 
 st.set_page_config(page_title="Kiểm tra file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
 st.title("✅ Kiểm tra file Excel Mẫu 03 (KSKDK) trước khi nhập Medinet")
@@ -19,8 +19,7 @@ uploaded = st.file_uploader("Chọn file Excel (.xlsx)", type=["xlsx"])
 if uploaded is not None:
     try:
         with st.spinner("Đang kiểm tra..."):
-            (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
-             danhmucdenghi_by_row, denghi_by_row) = validate_workbook(uploaded.getvalue())
+            issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row = validate_workbook(uploaded.getvalue())
     except Exception as e:
         st.error(f"Không đọc được file: {e}")
         st.stop()
@@ -53,19 +52,15 @@ if uploaded is not None:
 
     # File Excel đã kiểm tra: đã điền phân loại thể lực + tô màu/ghi chú ô lỗi (luôn có, kể cả khi không lỗi)
     try:
-        annotated = annotate_workbook(
-            uploaded.getvalue(), issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row
-        )
+        annotated = annotate_workbook(uploaded.getvalue(), issues_df, theluc_by_row)
         st.download_button(
-            "⬇ Tải file Excel đã kiểm tra (đã điền phân loại thể lực + Kết luận/Đề nghị còn trống + đánh dấu ô lỗi)",
+            "⬇ Tải file Excel đã kiểm tra (đã điền phân loại thể lực + đánh dấu ô lỗi)",
             data=annotated,
             file_name="mau03_da_kiem_tra.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         st.caption(
-            f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng, "
-            f"đề xuất **Kết luận (danh_muc_de_nghi)** cho {len(danhmucdenghi_by_row)} dòng đang trống, "
-            f"và điền mặc định **'{DE_NGHI_DEFAULT_VALUE}'** cho ô **de_nghi** ở {len(denghi_by_row)} dòng đang trống. "
+            f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng. "
             "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết."
         )
     except Exception as e:
@@ -94,13 +89,9 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
 - **Các ô chọn 1 giá trị cố định**: giới tính, nhóm máu, yếu tố Rh, loại khám, phân loại thể lực (1-5),
   các ô "Chưa phát hiện bất thường" (0/1), các câu tiền sử bệnh Có/Không...
 - **Mã ICD**: kiểm tra định dạng giống ICD-10 (cảnh báo nếu lạ, không có danh mục đầy đủ để đối chiếu).
-- **Các ô số không thuộc cận lâm sàng** (chiều cao, cân nặng, mạch, huyết áp, nhịp thở, thị lực mắt)
-  phải là số hợp lệ, và nếu nhập dạng chữ thì **phần thập phân phải dùng dấu phẩy (,)** — dấu chấm (.)
-  chỉ chấp nhận khi rõ ràng là phân cách hàng nghìn của số nguyên, còn lại bị coi là sai định dạng
-  theo đúng chuẩn Medinet.
-- **Các ô số thuộc cận lâm sàng** (xét nghiệm máu, sinh hóa máu, xét nghiệm nước tiểu): nếu có nhập
-  thì **chỉ kiểm tra đúng lỗi dùng dấu chấm (.) thay cho dấu phẩy (,)** ở phần thập phân — không kiểm
-  tra hay cảnh báo gì khác cho các ô này.
+- **Các ô số** (chiều cao, cân nặng, mạch, huyết áp, xét nghiệm...) phải là số hợp lệ, và nếu nhập
+  dạng chữ thì **phần thập phân phải dùng dấu phẩy (,)** — dấu chấm (.) chỉ chấp nhận khi rõ ràng là
+  phân cách hàng nghìn của số nguyên, còn lại bị coi là sai định dạng theo đúng chuẩn Medinet.
 - **Khớp danh mục chặt**: Đối tượng khám, Tỉnh, Phường/Xã (đối chiếu Phường/Xã có thuộc đúng Tỉnh),
   Nghề nghiệp, Nơi công tác, Bệnh tiền sử gia đình — đối chiếu với các sheet danh mục có trong
   chính file Excel (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`).
@@ -123,22 +114,12 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
   cân nặng (theo giới tính; bảng học sinh/SV nếu Đối tượng khám = mã 1, còn lại dùng bảng người lao
   động) rồi **điền sẵn vào cột này** trong file tải về. Vì file không có cột vòng ngực nên chỉ dùng 2
   chỉ số, lấy loại kém hơn.
-- **Tự đề xuất điền khi đang để trống** (chỉ áp dụng trong file Excel tải về, không tính là lỗi/cảnh báo):
-  - Ô **Kết luận** (`danh_muc_de_nghi`): xét các ô `*_phanloai`, `*_chandoansobo_icd`,
-    `*_chandoanxacdinh_icd` của 13 khối chuyên khoa (và Sản khoa/Phụ khoa, trừ khối đã chọn "từ chối
-    khám"). Theo thứ tự — luôn điền ra 1 trong 3 giá trị, không để trống:
-    1) có ít nhất 1 khối `*_phanloai` > 1 **và** có ít nhất 1 `*_chandoanxacdinh_icd` được điền →
-       "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ";
-    2) ngược lại, có ít nhất 1 `*_chandoansobo_icd` được điền → "Có yếu tố nguy cơ, cần theo dõi
-       thêm"; 3) còn lại → "Bình thường, hẹn khám định kỳ lần sau".
-  - Ô **`de_nghi`** (Đề nghị, ghi rõ): nếu đang trống → điền mặc định "Tái khám định kỳ".
 - **3 cặp đo thị lực Mắt** (không kính / kính lỗ / có kính, mỗi cặp gồm mắt phải + mắt trái): phải
   điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với 2 cặp "kính lỗ" và
   "có kính" — điền cặp này thì không điền cặp kia.
 - **`giadinh_macbenh` và `giadinh_danhsachbenh_icd`** chỉ ở mức **cảnh báo**, không chặn nhập liệu.
 - **Khoảng trắng ẩn** (dấu cách không ngắt `\\xa0`, ký tự rộng-0...) trong bất kỳ ô chữ nào — dấu vết
-  hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác. (Không áp
-  dụng cho các ô cận lâm sàng — xem mục riêng ở trên.)
+  hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác.
 - **Cấu trúc file**: phát hiện nếu 2 cột vô tình dùng trùng 1 mã field (lỗi hiếm gặp trong file gốc).
 
 Công cụ **không** kiểm tra: nội dung mô tả tự do (ghi chú, mô tả lâm sàng), và không có danh mục
