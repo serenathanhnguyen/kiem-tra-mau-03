@@ -1,96 +1,107 @@
+from datetime import datetime
 from io import BytesIO
 
 import pandas as pd
 import streamlit as st
 
 from validators import validate_workbook, annotate_workbook, SHEET_MAIN, DE_NGHI_DEFAULT_VALUE
+from merger import read_source_file, merge_mau03_files, default_unit_label
 
-st.set_page_config(page_title="Kiểm tra file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
-st.title("✅ Kiểm tra file Excel Mẫu 03 (KSKDK) trước khi nhập Medinet")
-st.caption(
-    "Tải lên file Excel dữ liệu bệnh nhân (đúng cấu trúc file mẫu Medinet — sheet "
-    f"**{SHEET_MAIN}**, có dòng nhãn và dòng mã field/keyword như file mẫu — công cụ tự nhận diện "
-    "dòng mã field dù nằm ở dòng số mấy, không bắt buộc phải là dòng 4). "
-    "Công cụ sẽ kiểm tra định dạng, ô bắt buộc, khớp danh mục (Tỉnh/Phường xã, Nghề nghiệp, "
-    "Nơi công tác, Đối tượng khám...), CCCD trùng, và khoảng trắng ẩn."
-)
+st.set_page_config(page_title="Kiểm tra & ghép file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
+st.title("✅ Công cụ Mẫu 03 (KSKDK) - Medinet")
 
-uploaded = st.file_uploader("Chọn file Excel (.xlsx)", type=["xlsx"])
+tab_check, tab_merge = st.tabs(["🔍 Kiểm tra file", "🔗 Ghép nhiều file"])
 
-if uploaded is not None:
-    try:
-        with st.spinner("Đang kiểm tra..."):
-            (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
-             danhmucdenghi_by_row, denghi_by_row, data_fixes_by_row) = validate_workbook(uploaded.getvalue())
-    except Exception as e:
-        st.error(f"Không đọc được file: {e}")
-        st.stop()
+# ============================================================
+# TAB 1 — KIỂM TRA FILE (giữ nguyên toàn bộ logic cũ)
+# ============================================================
+with tab_check:
+    st.caption(
+        "Tải lên file Excel dữ liệu bệnh nhân (đúng cấu trúc file mẫu Medinet — sheet "
+        f"**{SHEET_MAIN}**, có dòng nhãn và dòng mã field/keyword như file mẫu — công cụ tự nhận diện "
+        "dòng mã field dù nằm ở dòng số mấy, không bắt buộc phải là dòng 4). "
+        "Công cụ sẽ kiểm tra định dạng, ô bắt buộc, khớp danh mục (Tỉnh/Phường xã, Nghề nghiệp, "
+        "Nơi công tác, Đối tượng khám...), CCCD trùng, và khoảng trắng ẩn."
+    )
 
-    n_errors = int((issues_df["Mức độ"] == "Lỗi").sum()) if not issues_df.empty else 0
-    n_warnings = int((issues_df["Mức độ"] == "Cảnh báo").sum()) if not issues_df.empty else 0
-    n_bad_rows = issues_df.loc[issues_df["Mức độ"] == "Lỗi", "Dòng Excel"].nunique() if not issues_df.empty else 0
+    uploaded = st.file_uploader("Chọn file Excel (.xlsx)", type=["xlsx"], key="check_uploader")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Số dòng đã kiểm tra", n_rows_checked)
-    c2.metric("Số lỗi", n_errors)
-    c3.metric("Số cảnh báo", n_warnings)
-    c4.metric("Số dòng có lỗi", n_bad_rows)
+    if uploaded is not None:
+        try:
+            with st.spinner("Đang kiểm tra..."):
+                (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
+                 danhmucdenghi_by_row, denghi_by_row, data_fixes_by_row) = validate_workbook(uploaded.getvalue())
+        except Exception as e:
+            st.error(f"Không đọc được file: {e}")
+            st.stop()
 
-    if structural_notes:
-        with st.expander("⚠ Ghi chú về cấu trúc file (dòng nhãn/mã)", expanded=True):
-            for note in structural_notes:
-                st.warning(note)
+        n_errors = int((issues_df["Mức độ"] == "Lỗi").sum()) if not issues_df.empty else 0
+        n_warnings = int((issues_df["Mức độ"] == "Cảnh báo").sum()) if not issues_df.empty else 0
+        n_bad_rows = issues_df.loc[issues_df["Mức độ"] == "Lỗi", "Dòng Excel"].nunique() if not issues_df.empty else 0
 
-    if issues_df.empty:
-        st.success("Không phát hiện lỗi hay cảnh báo nào. 🎉")
-    else:
-        tab1, tab2 = st.tabs(["🔴 Lỗi (chặn nhập liệu)", "🟡 Cảnh báo (nên xem lại)"])
-        with tab1:
-            df_err = issues_df[issues_df["Mức độ"] == "Lỗi"].drop(columns=["Mức độ"])
-            st.dataframe(df_err, use_container_width=True, hide_index=True)
-        with tab2:
-            df_warn = issues_df[issues_df["Mức độ"] == "Cảnh báo"].drop(columns=["Mức độ"])
-            st.dataframe(df_warn, use_container_width=True, hide_index=True)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Số dòng đã kiểm tra", n_rows_checked)
+        c2.metric("Số lỗi", n_errors)
+        c3.metric("Số cảnh báo", n_warnings)
+        c4.metric("Số dòng có lỗi", n_bad_rows)
 
-    # File Excel đã kiểm tra: đã điền phân loại thể lực + tô màu/ghi chú ô lỗi (luôn có, kể cả khi không lỗi)
-    try:
-        annotated = annotate_workbook(
-            uploaded.getvalue(), issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row,
-            data_fixes_by_row
-        )
-        st.download_button(
-            "⬇ Tải file Excel đã kiểm tra (đã tự sửa dữ liệu + canh giữa + đánh dấu ô lỗi)",
-            data=annotated,
-            file_name="mau03_da_kiem_tra.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        n_fixed_rows = len(data_fixes_by_row)
-        st.caption(
-            f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng, "
-            f"đề xuất **Kết luận (danh_muc_de_nghi)** cho {len(danhmucdenghi_by_row)} dòng đang trống, "
-            f"điền mặc định **'{DE_NGHI_DEFAULT_VALUE}'** cho ô **de_nghi** ở {len(denghi_by_row)} dòng đang trống, "
-            f"và áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...) "
-            f"cho {n_fixed_rows} dòng. Toàn bộ vùng dữ liệu đã được **canh giữa**. "
-            "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết. "
-            "File không bị khoá — vẫn filter, xoá, copy, paste bình thường."
-        )
-    except Exception as e:
-        st.warning(f"Không tạo được file Excel đã đánh dấu: {e}")
+        if structural_notes:
+            with st.expander("⚠ Ghi chú về cấu trúc file (dòng nhãn/mã)", expanded=True):
+                for note in structural_notes:
+                    st.warning(note)
 
-    if not issues_df.empty:
-        buf = BytesIO()
-        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-            issues_df.to_excel(writer, index=False, sheet_name="Ket_qua_kiem_tra")
-        st.download_button(
-            "⬇ Tải báo cáo lỗi dạng bảng (Excel)",
-            data=buf.getvalue(),
-            file_name="bao_cao_kiem_tra_mau03.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        if issues_df.empty:
+            st.success("Không phát hiện lỗi hay cảnh báo nào. 🎉")
+        else:
+            itab1, itab2 = st.tabs(["🔴 Lỗi (chặn nhập liệu)", "🟡 Cảnh báo (nên xem lại)"])
+            with itab1:
+                df_err = issues_df[issues_df["Mức độ"] == "Lỗi"].drop(columns=["Mức độ"])
+                st.dataframe(df_err, use_container_width=True, hide_index=True)
+            with itab2:
+                df_warn = issues_df[issues_df["Mức độ"] == "Cảnh báo"].drop(columns=["Mức độ"])
+                st.dataframe(df_warn, use_container_width=True, hide_index=True)
 
-with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
-    st.markdown(
-        """
+        # File Excel đã kiểm tra: đã điền phân loại thể lực + tô màu/ghi chú ô lỗi (luôn có, kể cả khi không lỗi)
+        try:
+            annotated = annotate_workbook(
+                uploaded.getvalue(), issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row,
+                data_fixes_by_row
+            )
+            st.download_button(
+                "⬇ Tải file Excel đã kiểm tra (đã tự sửa dữ liệu + canh giữa + đánh dấu ô lỗi)",
+                data=annotated,
+                file_name="mau03_da_kiem_tra.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_annotated",
+            )
+            n_fixed_rows = len(data_fixes_by_row)
+            st.caption(
+                f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng, "
+                f"đề xuất **Kết luận (danh_muc_de_nghi)** cho {len(danhmucdenghi_by_row)} dòng đang trống, "
+                f"điền mặc định **'{DE_NGHI_DEFAULT_VALUE}'** cho ô **de_nghi** ở {len(denghi_by_row)} dòng đang trống, "
+                f"và áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...) "
+                f"cho {n_fixed_rows} dòng. Toàn bộ vùng dữ liệu đã được **canh giữa**. "
+                "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết. "
+                "File không bị khoá — vẫn filter, xoá, copy, paste bình thường."
+            )
+        except Exception as e:
+            st.warning(f"Không tạo được file Excel đã đánh dấu: {e}")
+
+        if not issues_df.empty:
+            buf = BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                issues_df.to_excel(writer, index=False, sheet_name="Ket_qua_kiem_tra")
+            st.download_button(
+                "⬇ Tải báo cáo lỗi dạng bảng (Excel)",
+                data=buf.getvalue(),
+                file_name="bao_cao_kiem_tra_mau03.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_report",
+            )
+
+    with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
+        st.markdown(
+            """
 - **Ô bắt buộc** (nhãn có dấu `*`) không được để trống.
 - **Ngày tháng** (`ngay_kham`, `ngay_sinh`) đúng định dạng `dd/MM/yyyy`.
 - **CCCD** đủ 12 chữ số, và **không trùng** với dòng khác trong cùng file. Ngoài ra suy từ CCCD để
@@ -183,5 +194,132 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
 Công cụ **không** kiểm tra: nội dung mô tả tự do (ghi chú, mô tả lâm sàng), và không có danh mục
 đầy đủ cho Dân tộc / Hình thức chi trả nên các ô đó chỉ được kiểm tra "có dữ liệu hay không", không
 đối chiếu danh mục.
-        """
+            """
+        )
+
+# ============================================================
+# TAB 2 — GHÉP NHIỀU FILE (tính năng mới)
+# ============================================================
+with tab_merge:
+    st.caption(
+        "Dùng khi có **nhiều file dữ liệu Mẫu 03** (ví dụ mỗi khóm/tổ/phường 1 file, cùng đúng khuôn "
+        "mẫu Medinet) và muốn **gộp lại thành 1 file duy nhất** để chạy script Tampermonkey 1 lần cho "
+        "cả khu vực, thay vì chạy tay từng file nhỏ. Các sheet danh mục (Nghề nghiệp, Nơi làm việc, "
+        "Tỉnh, Phường xã...) trong file kết quả lấy theo **file ĐẦU TIÊN** trong danh sách tải lên — "
+        "vì đây là danh mục dùng chung của Medinet, không phải dữ liệu riêng của từng đơn vị."
     )
+
+    merge_files = st.file_uploader(
+        "Chọn nhiều file Excel Mẫu 03 cần ghép (giữ Ctrl hoặc Cmd để chọn nhiều file cùng lúc)",
+        type=["xlsx"], accept_multiple_files=True, key="merge_uploader",
+    )
+
+    if merge_files:
+        if len(merge_files) < 2:
+            st.info("Chọn ít nhất 2 file để ghép.")
+        else:
+            st.write("**Tên đơn vị cho từng file** (tự đoán từ tên file — sửa lại cho đúng nếu cần):")
+            unit_labels = []
+            for i, f in enumerate(merge_files):
+                label = st.text_input(f"📄 {f.name}", value=default_unit_label(f.name), key=f"unit_label_{i}")
+                unit_labels.append(label)
+
+            if st.button("🔗 Ghép các file này lại", type="primary"):
+                parsed, failed = [], []
+                for f, label in zip(merge_files, unit_labels):
+                    try:
+                        parsed.append(read_source_file(f.getvalue(), f.name, label))
+                    except Exception as e:
+                        failed.append((f.name, str(e)))
+
+                if failed:
+                    st.error("Các file sau **không ghép được**, cần kiểm tra lại (có thể lỡ tải nhầm mẫu khác):")
+                    for name, err in failed:
+                        st.write(f"- **{name}**: {err}")
+
+                if len(parsed) < 2:
+                    st.warning("Chưa đủ ít nhất 2 file hợp lệ để ghép.")
+                else:
+                    if failed:
+                        st.warning(f"Vẫn tiếp tục ghép **{len(parsed)} file hợp lệ**, bỏ qua {len(failed)} file lỗi ở trên.")
+                    try:
+                        merged_bytes, summary = merge_mau03_files(parsed)
+                    except Exception as e:
+                        st.error(f"Không ghép được: {e}")
+                        st.stop()
+
+                    mc1, mc2, mc3 = st.columns(3)
+                    mc1.metric("Tổng số dòng đã ghép", summary["total_rows"])
+                    mc2.metric("Số file đã ghép", len(parsed))
+                    mc3.metric("Số CCCD trùng phát hiện", len(summary["duplicates"]))
+
+                    st.write("**Số dòng lấy từ mỗi file:**")
+                    st.dataframe(
+                        pd.DataFrame(summary["per_file"], columns=["Tên file", "Đơn vị", "Số dòng"]),
+                        use_container_width=True, hide_index=True,
+                    )
+
+                    if summary["layout_notes"]:
+                        with st.expander("⚠ Ghi chú về cấu trúc file", expanded=False):
+                            for name, note in summary["layout_notes"]:
+                                st.warning(f"**{name}**: {note}")
+
+                    if summary["field_gaps"]:
+                        with st.expander(
+                            "⚠ Có file thiếu 1 số mã field so với file nền (các dòng đó sẽ để trống ở đúng ô thiếu)",
+                            expanded=True,
+                        ):
+                            for name, gaps in summary["field_gaps"]:
+                                st.warning(f"**{name}**: thiếu `{'`, `'.join(gaps)}`")
+
+                    if summary["duplicates"]:
+                        st.warning(
+                            f"⚠ Phát hiện **{len(summary['duplicates'])} số CCCD bị trùng** — file vẫn ghép "
+                            "đầy đủ, các ô CCCD trùng được tô vàng + ghi chú trong file tải về. Tự kiểm tra "
+                            "lại trước khi chạy script điền Medinet (CCCD trùng thật sẽ bị Medinet từ chối lưu)."
+                        )
+                        dup_rows = []
+                        for d in summary["duplicates"]:
+                            for r, unit_label, ho_ten in d["rows"]:
+                                dup_rows.append({
+                                    "CCCD": d["cccd"], "Họ tên": ho_ten, "Đơn vị": unit_label,
+                                    "Dòng Excel (sau ghép)": r,
+                                })
+                        st.dataframe(pd.DataFrame(dup_rows), use_container_width=True, hide_index=True)
+                    else:
+                        st.success("Không phát hiện CCCD trùng giữa các file. 🎉")
+
+                    st.download_button(
+                        "⬇ Tải file đã ghép",
+                        data=merged_bytes,
+                        file_name=f"Mau03_da_ghep_{datetime.now().strftime('%d-%m-%Y')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_merged",
+                    )
+                    st.caption(
+                        "Có thể đưa file này qua tab \"🔍 Kiểm tra file\" ở trên để kiểm tra lại lần nữa "
+                        "trước khi dùng script Tampermonkey."
+                    )
+
+    with st.expander("ℹ Công cụ ghép đang làm gì?"):
+        st.markdown(
+            """
+- Đọc từng file theo **mã field** (không theo số cột) — dùng đúng cách nhận diện cấu trúc (dòng
+  nhãn/dòng mã field/dòng dữ liệu) như tab "Kiểm tra file", nên vẫn ghép đúng dù cột ở 1 file nguồn
+  có lệch vị trí đôi chút so với file nền.
+- **File đầu tiên trong danh sách tải lên là NỀN**: giữ nguyên định dạng, 4 dòng đầu và toàn bộ các
+  sheet danh mục (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`...).
+- Gộp dữ liệu bệnh nhân của **tất cả** file (kể cả file nền) theo đúng thứ tự đã tải lên, đánh lại
+  **STT liên tục** từ 1.
+- File nào **thiếu mã field bắt buộc** (`ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`) —
+  ví dụ lỡ tải nhầm file của mẫu khác — sẽ **bị loại**, có báo lỗi rõ tên file, các file còn lại vẫn
+  ghép bình thường.
+- File thiếu 1 vài mã field khác (không thuộc nhóm bắt buộc trên) vẫn được ghép, chỉ để **trống**
+  đúng những ô đó — có cảnh báo rõ file nào thiếu mã gì.
+- **CCCD trùng** (giữa các file, hoặc trùng ngay trong 1 file): **không chặn**, vẫn ghép đầy đủ, chỉ
+  tô vàng + ghi chú ô CCCD trong file tải về và liệt kê trong bảng cảnh báo trên màn hình.
+- File kết quả có thêm **1 sheet phụ "Nguon_Ghep"** ghi rõ mỗi dòng bệnh nhân đến từ đơn vị/file nào
+  — không đụng vào cấu trúc sheet dữ liệu chính (`ThongTinHanhChinh`), nên không ảnh hưởng tới script
+  Tampermonkey hay tab "Kiểm tra file".
+            """
+        )
