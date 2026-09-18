@@ -293,6 +293,8 @@ def compute_data_fixes_for_row(raw_by_code):
       - Các cột '*_chandoansobo_icd' / '*_chandoanxacdinh_icd' (cột BI-DB): giá trị 0 thì chuyển null.
       - 'loai_kham' (cột ED): trống thì điền = 2.
       - 'kskdk_xnm_slhc' — Số lượng hồng cầu (cột EE): trống thì điền = 0.
+      - '*_tuchoikham' (cột CV: sankhoa_tuchoikham, cột DA: phukhoa_tuchoikham) = 1: cột phanloai
+        tương ứng (CZ: sankhoa_phanloai, DE: phukhoa_phanloai) chuyển null.
     """
     fixes = {}
 
@@ -332,6 +334,10 @@ def compute_data_fixes_for_row(raw_by_code):
 
     if blank("kskdk_xnm_slhc"):
         fixes["kskdk_xnm_slhc"] = 0
+
+    for tuchoi_c, _check_c, _sobo_c, _xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
+        if (not blank(tuchoi_c)) and val(tuchoi_c) == "1":
+            fixes[phanloai_c] = None
 
     return fixes
 
