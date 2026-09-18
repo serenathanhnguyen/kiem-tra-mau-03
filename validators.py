@@ -121,6 +121,17 @@ MALE_EXCLUDED_FIELDS = ["thai_san_co_khong", "thai_san_liet_ke"] + [
 
 DECIMAL_DOT_THOUSANDS_RE = re.compile(r"^-?\d{1,3}(\.\d{3})+$")
 
+# Các ô hạ mức từ "Lỗi" xuống "Cảnh báo" (không chặn nhập liệu) — theo yêu cầu Jo
+WARN_ONLY_FIELDS = {"giadinh_macbenh", "giadinh_danhsachbenh_icd"}
+
+# 3 cặp đo thị lực Mắt — điền theo từng cặp (mp = mắt phải, mt = mắt trái)
+EYE_PAIRS = [
+    ("khongkinh", ("mat_khongkinh_mp", "mat_khongkinh_mt")),  # cặp 1: không kính
+    ("kinhlo", ("mat_kinhlo_mp", "mat_kinhlo_mt")),           # cặp 2: kính lỗ
+    ("cokinh", ("mat_cokinh_mp", "mat_cokinh_mt")),           # cặp 3: có kính
+]
+EYE_PAIR_LABEL = {"khongkinh": "không kính", "kinhlo": "kính lỗ", "cokinh": "có kính"}
+
 
 # ============================================================
 # HÀM TIỆN ÍCH
@@ -562,6 +573,45 @@ def check_cccd_consistency(raw_by_code):
     return issues
 
 
+def check_eye_pairs(raw_by_code):
+    """3 cặp đo thị lực (quy tắc Jo bổ sung):
+    - Điền theo từng CẶP: trong 1 cặp, mắt phải + mắt trái phải cùng có dữ liệu (hoặc cùng để trống);
+      lệch một ô → báo lỗi.
+    - Cặp 1 ('không kính') LOẠI TRỪ với cặp 2 ('kính lỗ') và cặp 3 ('có kính'): nếu đã điền cặp 1
+      thì không được điền cặp 2/3, và ngược lại. (Cặp 2 và 3 vẫn có thể điền cùng nhau.)
+    """
+    issues = []
+
+    def blank(c):
+        return is_blank(raw_by_code.get(c))
+
+    pair_filled = {}
+    for name, (a, b) in EYE_PAIRS:
+        ba, bb = blank(a), blank(b)
+        if ba != bb:
+            empty_code = a if ba else b
+            other_code = b if ba else a
+            issues.append({
+                "code": empty_code,
+                "level": "Lỗi",
+                "message": f"Phải điền cả cặp — ô mắt kia ('{other_code}') đã có dữ liệu nhưng ô này để trống",
+            })
+        pair_filled[name] = (not ba) or (not bb)
+
+    if pair_filled.get("khongkinh"):
+        pairs = dict(EYE_PAIRS)
+        for name in ("kinhlo", "cokinh"):
+            if pair_filled.get(name):
+                for c in pairs[name]:
+                    if not blank(c):
+                        issues.append({
+                            "code": c,
+                            "level": "Lỗi",
+                            "message": f"Đã điền cặp '{EYE_PAIR_LABEL['khongkinh']}' thì không điền cặp '{EYE_PAIR_LABEL[name]}' (cặp 1 loại trừ cặp 2 và 3)",
+                        })
+    return issues
+
+
 # ============================================================
 # KIỂM TRA TOÀN BỘ FILE
 # ============================================================
@@ -608,6 +658,9 @@ def validate_workbook(file_bytes):
             raw_by_code[code] = raw_value
             cell_issues = check_cell(code, raw_value, col_defs_by_code, refs, row_ctx)
             for iss in cell_issues:
+                level = iss["level"]
+                if code in WARN_ONLY_FIELDS and level == "Lỗi":
+                    level = "Cảnh báo"  # hạ mức, không chặn nhập liệu
                 issues.append({
                     "Dòng Excel": r,
                     "Họ tên": ho_ten,
@@ -616,14 +669,15 @@ def validate_workbook(file_bytes):
                     "Nhãn": cdef["label"],
                     "Mã field": code,
                     "Giá trị": ws.cell(row=r, column=cdef["col"]).value,
-                    "Mức độ": iss["level"],
+                    "Mức độ": level,
                     "Chi tiết": iss["message"],
                 })
 
         gioi_tinh_text = clean_ws(raw_by_code.get("gioi_tinh"))
         cross_issues = (check_specialty_blocks(raw_by_code, gioi_tinh_text)
                         + check_doi_tuong_rules(raw_by_code)
-                        + check_cccd_consistency(raw_by_code))
+                        + check_cccd_consistency(raw_by_code)
+                        + check_eye_pairs(raw_by_code))
         for iss in cross_issues:
             cdef = col_defs_by_code.get(iss["code"])
             issues.append({
