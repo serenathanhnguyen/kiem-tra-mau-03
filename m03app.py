@@ -154,6 +154,8 @@ with st.expander("ℹ Công cụ đang kiểm tra những gì?"):
     **0** thì chuyển thành **trống (null)**.
   - **Loại khám** (cột ED): nếu đang trống → điền mặc định **= 2**.
   - **Số lượng hồng cầu** (cột EE, `kskdk_xnm_slhc`): nếu đang trống → điền mặc định **= 0**.
+  - **`*_tuchoikham`** (cột CV: `sankhoa_tuchoikham`, cột DA: `phukhoa_tuchoikham`) = 1: cột phân loại
+    tương ứng (CZ: `sankhoa_phanloai`, DE: `phukhoa_phanloai`) chuyển thành **trống (null)**.
 - **Nhận diện cấu trúc file linh hoạt**: công cụ tự tìm dòng "mã field" (keyword) trong 15 dòng đầu
   của sheet thay vì cố định ở dòng 4 — chỉ cần file upload có dòng keyword giống file mẫu (dựa trên
   các mã quen thuộc như `ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`), dữ liệu sẽ được
