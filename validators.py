@@ -1110,6 +1110,67 @@ def validate_workbook(file_bytes):
             danhmucdenghi_by_row, denghi_by_row, data_fixes_by_row)
 
 
+def _unlock_workbook(wb):
+    """Tắt khoá bảo vệ (Protect Sheet) mang theo từ file mẫu gốc trên MỌI sheet — nếu không tắt,
+    Excel sẽ tự ẩn/xám bớt nhiều nút ở Home và Filter khi mở file tải về, khiến không gõ sửa
+    được dữ liệu. Việc này chỉ đổi thuộc tính bảo vệ hiển thị của Excel, KHÔNG đụng tới cấu trúc
+    cột/mã field/dữ liệu nên không ảnh hưởng gì tới chuẩn import Medinet. Dùng chung cho mọi hàm
+    xuất file Excel tải về."""
+    for sh in wb.worksheets:
+        sh.protection.sheet = False
+    try:
+        wb.security = None   # tắt luôn khoá cấu trúc workbook (ẩn/hiện/xoá sheet) nếu file mẫu có đặt
+    except Exception:
+        pass
+
+
+def _mark_issue_cells(ws, issues_df):
+    """Tô màu (đỏ = lỗi, vàng = cảnh báo) + ghi chú vào từng ô có vấn đề, theo đúng issues_df đã
+    tính từ validate_workbook(). Gom các issue theo ô (row, col_letter) để 1 ô có thể có nhiều ghi
+    chú. Dùng chung cho annotate_workbook() (bản có tự sửa dữ liệu) và annotate_workbook_raw()
+    (bản giữ nguyên dữ liệu gốc) để không có 2 nơi định nghĩa khác nhau cách đánh dấu ô lỗi."""
+    if issues_df is None or issues_df.empty:
+        return
+    by_cell = {}
+    for _, row in issues_df.iterrows():
+        col_letter = row.get("Cột")
+        r = row.get("Dòng Excel")
+        if not col_letter or r is None:
+            continue
+        key = (int(r), str(col_letter))
+        by_cell.setdefault(key, {"msgs": [], "has_error": False})
+        by_cell[key]["msgs"].append(f"[{row['Mức độ']}] {row['Chi tiết']}")
+        if row["Mức độ"] == "Lỗi":
+            by_cell[key]["has_error"] = True
+
+    for (r, col_letter), info in by_cell.items():
+        cell = ws[f"{col_letter}{r}"]
+        cell.fill = FILL_ERROR if info["has_error"] else FILL_WARN
+        text = "\n".join(info["msgs"])
+        cm = Comment(text, "Công cụ kiểm tra")
+        cm.width = 320
+        cm.height = max(60, 18 * (len(info["msgs"]) + 1))
+        cell.comment = cm
+
+
+def annotate_workbook_raw(file_bytes, issues_df):
+    """Tạo file Excel để tải về GIỮ NGUYÊN Y HỆT dữ liệu gốc đã tải lên — KHÔNG áp bất kỳ quy tắc
+    'tự sửa dữ liệu' nào (không điền Phân Loại thể lực, không đề xuất Kết luận, không điền mặc
+    định 'de_nghi', không áp các quy tắc tự sửa giới tính/tiền sử bệnh/ICD/loại khám...), KHÔNG
+    canh giữa dữ liệu. CHỈ làm 2 việc: (1) tắt khoá bảo vệ sheet như annotate_workbook() để vẫn
+    gõ sửa tay được; (2) tô màu + ghi chú vào các ô đang sai quy tắc (đỏ = lỗi, vàng = cảnh báo)
+    để người dùng tự xem và tự sửa theo đúng dữ liệu gốc của mình.
+    Trả về bytes của file .xlsx."""
+    wb = openpyxl.load_workbook(BytesIO(file_bytes))   # giữ nguyên, KHÔNG data_only (để lưu lại được)
+    _unlock_workbook(wb)
+    ws = wb[SHEET_MAIN]
+    _mark_issue_cells(ws, issues_df)
+
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
 def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row=None,
                        denghi_by_row=None, data_fixes_by_row=None):
     """Tạo file Excel để tải về:
@@ -1125,18 +1186,8 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
     data_fixes_by_row = data_fixes_by_row or {}
 
     wb = openpyxl.load_workbook(BytesIO(file_bytes))   # giữ nguyên, KHÔNG data_only (để lưu lại được)
+    _unlock_workbook(wb)
     ws = wb[SHEET_MAIN]
-
-    # Tắt khoá bảo vệ (Protect Sheet) mang theo từ file mẫu gốc trên MỌI sheet — nếu không tắt,
-    # Excel sẽ tự ẩn/xám bớt nhiều nút ở Home và Filter khi mở file tải về, khiến không gõ sửa
-    # được dữ liệu. Việc này chỉ đổi thuộc tính bảo vệ hiển thị của Excel, KHÔNG đụng tới cấu trúc
-    # cột/mã field/dữ liệu nên không ảnh hưởng gì tới chuẩn import Medinet.
-    for sh in wb.worksheets:
-        sh.protection.sheet = False
-    try:
-        wb.security = None   # tắt luôn khoá cấu trúc workbook (ẩn/hiện/xoá sheet) nếu file mẫu có đặt
-    except Exception:
-        pass
 
     label_row, code_row, data_start_row, _note = detect_layout_rows(ws)
     col_map = _build_code_col_map(ws, code_row)
@@ -1176,28 +1227,8 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
         for c in range(1, last_col + 1):
             ws.cell(row=r, column=c).alignment = center_align
 
-    # (5) Gom các issue theo ô (row, col_letter) để 1 ô có thể có nhiều ghi chú
-    if issues_df is not None and not issues_df.empty:
-        by_cell = {}
-        for _, row in issues_df.iterrows():
-            col_letter = row.get("Cột")
-            r = row.get("Dòng Excel")
-            if not col_letter or r is None:
-                continue
-            key = (int(r), str(col_letter))
-            by_cell.setdefault(key, {"msgs": [], "has_error": False})
-            by_cell[key]["msgs"].append(f"[{row['Mức độ']}] {row['Chi tiết']}")
-            if row["Mức độ"] == "Lỗi":
-                by_cell[key]["has_error"] = True
-
-        for (r, col_letter), info in by_cell.items():
-            cell = ws[f"{col_letter}{r}"]
-            cell.fill = FILL_ERROR if info["has_error"] else FILL_WARN
-            text = "\n".join(info["msgs"])
-            cm = Comment(text, "Công cụ kiểm tra")
-            cm.width = 320
-            cm.height = max(60, 18 * (len(info["msgs"]) + 1))
-            cell.comment = cm
+    # (5) Tô màu + ghi chú vào từng ô lỗi/cảnh báo
+    _mark_issue_cells(ws, issues_df)
 
     out = BytesIO()
     wb.save(out)
