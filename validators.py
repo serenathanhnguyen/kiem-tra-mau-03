@@ -39,28 +39,30 @@ CHOICE_ONE_OF = {
 }
 
 # Các câu hỏi tiền sử bệnh bản thân / gia đình dạng Có(1)/Không(0)
-# Mã field đã đổi theo ĐÚNG keyword thật trong file Excel (Jo gửi ảnh chụp cột AB-AU) — tên cũ
-# (benh_than_kinh, benh_mat, tang_ha...) là mã SAI/không khớp cột thật, khiến toàn bộ 20 câu này
-# trước đây không được kiểm tra gì cả (col_map không bao giờ khớp được mã sai). "benh_5nam" (cột
-# AA) KHÔNG có trong ảnh Jo gửi — giữ nguyên tên cũ, cần Jo xác nhận lại nếu mã thật cũng khác.
+# LƯU Ý QUAN TRỌNG: đã ĐẢO NGƯỢC lại lần đổi tên trước (ts_than_kinh_dau, ts_mat...) — đối chiếu
+# trực tiếp với file Excel THẬT Jo gửi (10_09_26_FILE_MAU_M3...) thì cột AB-AU vẫn dùng ĐÚNG các
+# mã field CŨ này (benh_than_kinh, benh_mat...). Ảnh chụp + file "Danh_sach_ten_cot_keyword.xlsx"
+# Jo gửi trước đó là một bảng đặt tên KHÁC, KHÔNG khớp với file thật đang dùng — đổi theo bảng đó
+# đã khiến toàn bộ 20 câu này ngừng được kiểm tra trên file thật (mã field không khớp cột nào cả).
 BINARY_01_FIELDS = [
-    "benh_5nam", "ts_than_kinh_dau", "ts_mat", "ts_tai", "ts_tim_mach", "ts_can_thiep_tim_mach",
-    "ts_tang_huyet_ap", "ts_kho_tho", "ts_benh_phoi", "ts_benh_than", "ts_nghien_ruou_bia",
-    "ts_dai_thao_duong", "ts_tam_than", "ts_roi_loan_y_thuc", "ts_ngat_chong_mat", "ts_tieu_hoa",
-    "ts_roi_loan_giac_ngu", "ts_tai_bien_mach_mau_nao", "ts_cot_song", "ts_ruou_bia_thuong_xuyen",
-    "ts_ma_tuy", "dieu_tri_benh_co_khong", "thai_san_co_khong",
+    "benh_5nam", "benh_than_kinh", "benh_mat", "benh_tai", "benh_tim", "pt_tim_mach",
+    "tang_ha", "kho_tho", "benh_phoi", "benh_than", "nghien_ruou_bia", "dai_thao_duong",
+    "benh_tam_than", "mat_y_thuc", "ngat_chong_mat", "benh_tieu_hoa", "roi_loan_giac_ngu",
+    "tai_bien_mach_mau_nao", "cot_song", "su_dung_ruou_bia", "su_dung_ma_tuy",
+    "dieu_tri_benh_co_khong", "thai_san_co_khong",
 ]
 
 # Các trường số KHÔNG thuộc cận lâm sàng (chỉ số sinh tồn + thị lực) — kiểm tra đầy đủ:
 # vừa bắt lỗi dấu chấm/phẩy, vừa phải là số hợp lệ.
-# mat_khongkinh_*/mat_cokinh_* đổi tên thành mat_thiluc_khongkinh_*/mat_thiluc_cokinh_* theo đúng
-# keyword thật (ảnh Jo gửi, cột DR/DS/DV/DW) — mat_kinhlo_* (DT/DU) giữ nguyên, đúng sẵn.
+# LƯU Ý: đã ĐẢO NGƯỢC lại tên mat_thiluc_khongkinh_*/mat_thiluc_cokinh_* — file thật vẫn dùng
+# mat_khongkinh_*/mat_cokinh_* (không có "thiluc_"); mat_kinhlo_* giữ nguyên vì vốn đã đúng.
 NUMERIC_FIELDS = [
     "chieucao", "cannang", "nhiptho", "mach", "huyetaptamthu", "huyetaptamtruong",
-    "mat_thiluc_khongkinh_mp", "mat_thiluc_khongkinh_mt", "mat_kinhlo_mp", "mat_kinhlo_mt",
-    "mat_thiluc_cokinh_mp", "mat_thiluc_cokinh_mt", "mat_docau_mp", "mat_docau_mt",
+    "mat_khongkinh_mp", "mat_khongkinh_mt", "mat_kinhlo_mp", "mat_kinhlo_mt",
+    "mat_cokinh_mp", "mat_cokinh_mt", "mat_docau_mp", "mat_docau_mt",
     "mat_dotru_mp", "mat_dotru_mt", "mat_truc_mt",
 ]
+
 
 
 # Các trường số THUỘC cận lâm sàng (xét nghiệm máu, sinh hóa máu, xét nghiệm nước tiểu).
@@ -115,9 +117,11 @@ DE_NGHI_DEFAULT_VALUE = "Tái khám định kỳ"
 
 # 12 khối chuyên khoa dạng 4 ô: _chuaphathienbatthuong / _chandoansobo_icd / _chandoanxacdinh_icd / _phanloai
 # Mã lấy ĐÚNG theo file gốc — thankinh có lỗi chính tả sẵn trong file ("chuandoansobo" thay vì "chandoansobo")
-# Khối "mat" (Mắt) KHÔNG còn nằm trong bảng chung này nữa — mã field thật khác hẳn khuôn 4 ô này
-# (mat_binhthuong/mat_chandoansobo/mat_chandoanxacdinh, không có "_icd") và Jo đã cho quy tắc
-# RIÊNG (mức Cảnh báo, có tự điền H52.7...) — xem check_mat_rules() + compute_data_fixes_for_row().
+# Khối "mat" (Mắt) KHÔNG còn nằm trong bảng chung này nữa — Jo cho quy tắc RIÊNG (mức Cảnh báo, có
+# tự điền H52.7...) khác hẳn 12 khối kia — xem check_mat_rules() + compute_data_fixes_for_row().
+# Mã field khối Mắt VẪN đúng khuôn _chuaphathienbatthuong/_chandoansobo_icd/_chandoanxacdinh_icd/
+# _phanloai như 12 khối này (mat_chuaphathienbatthuong, mat_chandoansobo_icd, mat_chandoanxacdinh_icd,
+# mat_phanloai) — chỉ tách riêng vì QUY TẮC khác, không phải vì tên mã khác.
 # Hệ quả: khối Mắt KHÔNG còn tự động góp vào gợi ý "Kết luận" (compute_danh_muc_de_nghi_for_row)
 # hay quy tắc "có ICD xác định thật thì ép Kết luận = có bệnh mạn tính" như 12 khối còn lại — nếu
 # Jo muốn Mắt vẫn góp vào 2 chỗ đó, nói mình bổ sung riêng.
@@ -153,12 +157,12 @@ DECIMAL_DOT_THOUSANDS_RE = re.compile(r"^-?\d{1,3}(\.\d{3})+$")
 WARN_ONLY_FIELDS = {"giadinh_macbenh", "giadinh_danhsachbenh_icd"}
 
 # 3 cặp đo thị lực Mắt — điền theo từng cặp (mp = mắt phải, mt = mắt trái)
-# Mã field đổi theo đúng keyword thật (ảnh Jo gửi): mat_khongkinh_*/mat_cokinh_* -> có thêm
-# "thiluc_"; mat_kinhlo_* giữ nguyên, đúng sẵn.
+# LƯU Ý: đã ĐẢO NGƯỢC lại tên mat_thiluc_khongkinh_*/mat_thiluc_cokinh_* — file thật vẫn dùng
+# mat_khongkinh_*/mat_cokinh_* (không có "thiluc_"); mat_kinhlo_* giữ nguyên vì vốn đã đúng.
 EYE_PAIRS = [
-    ("khongkinh", ("mat_thiluc_khongkinh_mp", "mat_thiluc_khongkinh_mt")),  # cặp 1: không kính
-    ("kinhlo", ("mat_kinhlo_mp", "mat_kinhlo_mt")),                        # cặp 2: kính lỗ
-    ("cokinh", ("mat_thiluc_cokinh_mp", "mat_thiluc_cokinh_mt")),          # cặp 3: có kính
+    ("khongkinh", ("mat_khongkinh_mp", "mat_khongkinh_mt")),  # cặp 1: không kính
+    ("kinhlo", ("mat_kinhlo_mp", "mat_kinhlo_mt")),           # cặp 2: kính lỗ
+    ("cokinh", ("mat_cokinh_mp", "mat_cokinh_mt")),           # cặp 3: có kính
 ]
 EYE_PAIR_LABEL = {"khongkinh": "không kính", "kinhlo": "kính lỗ", "cokinh": "có kính"}
 
@@ -184,15 +188,15 @@ FILL_WARN = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="sol
 # hiện Cảnh báo trong bảng kiểm tra, không chỉ âm thầm tự điền trong file tải về.
 # ============================================================
 
-# Cột AB-AU: 20 câu tiền sử bệnh dạng Có(1)/Không(0), mã field đã đổi theo keyword thật (xem
-# BINARY_01_FIELDS ở trên). Giá trị hợp lệ CHỈ là 0 hoặc 1 — có dữ liệu mà khác "1" thì chỉnh về 0;
-# ĐANG ĐỂ TRỐNG cũng chỉnh về 0 (yêu cầu mới của Jo — trước đây bỏ qua ô trống, giờ không còn nữa).
+# Cột AA-AU: 21 câu tiền sử bệnh dạng Có(1)/Không(0), mã field ĐÚNG THEO FILE THẬT (xem lưu ý ở
+# BINARY_01_FIELDS — đã đảo ngược lại lần đổi tên sai trước đó). Giá trị hợp lệ CHỈ là 0 hoặc 1 —
+# có dữ liệu mà khác "1" thì chỉnh về 0; ĐANG ĐỂ TRỐNG cũng chỉnh về 0 (yêu cầu mới của Jo — trước
+# đây bỏ qua ô trống, giờ không còn nữa).
 BINARY_STRICT_FIELDS = [
-    "benh_5nam", "ts_than_kinh_dau", "ts_mat", "ts_tai", "ts_tim_mach", "ts_can_thiep_tim_mach",
-    "ts_tang_huyet_ap", "ts_kho_tho", "ts_benh_phoi", "ts_benh_than", "ts_nghien_ruou_bia",
-    "ts_dai_thao_duong", "ts_tam_than", "ts_roi_loan_y_thuc", "ts_ngat_chong_mat", "ts_tieu_hoa",
-    "ts_roi_loan_giac_ngu", "ts_tai_bien_mach_mau_nao", "ts_cot_song", "ts_ruou_bia_thuong_xuyen",
-    "ts_ma_tuy",
+    "benh_5nam", "benh_than_kinh", "benh_mat", "benh_tai", "benh_tim", "pt_tim_mach",
+    "tang_ha", "kho_tho", "benh_phoi", "benh_than", "nghien_ruou_bia", "dai_thao_duong",
+    "benh_tam_than", "mat_y_thuc", "ngat_chong_mat", "benh_tieu_hoa", "roi_loan_giac_ngu",
+    "tai_bien_mach_mau_nao", "cot_song", "su_dung_ruou_bia", "su_dung_ma_tuy",
 ]
 
 # Cột BA-BF: khoảng giá trị hợp lệ cho các chỉ số sinh tồn — ngoài khoảng thì tô màu + ghi chú cảnh báo
@@ -301,38 +305,39 @@ def compute_danh_muc_de_nghi_for_row(raw_by_code):
 
 
 # ============================================================
-# QUY TẮC RIÊNG CHO KHỐI MẮT (mat_binhthuong/mat_chandoansobo/mat_chandoanxacdinh/mat_phanloai)
-# Jo bổ sung, THAY THẾ hoàn toàn cách xử lý khuôn 4-ô chung (SPECIALTY_BLOCKS_4FIELD) cho riêng
-# khối này — dùng chung cho cả bước validate (check_mat_rules) lẫn bước tự sửa dữ liệu
-# (compute_data_fixes_for_row) để không có 2 nơi định nghĩa khác nhau cùng 1 điều kiện.
+# QUY TẮC RIÊNG CHO KHỐI MẮT
+# Mã field ĐÚNG THEO FILE THẬT: mat_chuaphathienbatthuong (DF) / mat_chandoansobo_icd (DG) /
+# mat_chandoanxacdinh_icd (DH) / mat_phanloai (DI) — cùng khuôn 4 ô như 12 khối kia (KHÔNG phải
+# mat_binhthuong/mat_chandoansobo/mat_chandoanxacdinh như lần đổi tên trước — đã đảo ngược lại,
+# xem lưu ý ở BINARY_01_FIELDS). Jo bổ sung quy tắc RIÊNG (mức Cảnh báo, có tự điền H52.7...) khác
+# hẳn 12 khối kia nên tách hàm riêng — dùng chung cho cả bước validate (check_mat_rules) lẫn bước
+# tự sửa dữ liệu (compute_data_fixes_for_row) để không có 2 nơi định nghĩa khác nhau cùng 1 điều kiện.
 # ============================================================
 
-def _mat_needs_icd_autofix(raw_by_code):
-    """True nếu mat_phanloai (DI) > 1 mà cả mat_chandoansobo (DG) và mat_chandoanxacdinh (DH)
-    đều đang trống — tình huống cần bổ sung ICD theo yêu cầu Jo."""
-    di_num = to_number(raw_by_code.get("mat_phanloai"))
-    if di_num is None or di_num <= 1:
-        return False
-    return is_blank(raw_by_code.get("mat_chandoansobo")) and is_blank(raw_by_code.get("mat_chandoanxacdinh"))
+def _mat_phanloai_num(raw_by_code):
+    return to_number(raw_by_code.get("mat_phanloai"))
 
 
-def _mat_autofix_icd_value(raw_by_code):
-    """Nếu đủ điều kiện tự điền 'H52.7' cho mat_chandoansobo (thị lực có kính 1 trong 2 mắt <
-    8/10) thì trả về 'H52.7'; ngược lại trả về None (không đủ điều kiện tự điền, cần bác sĩ tự bổ
-    sung ICD — chỉ hiện cảnh báo, không tự điền)."""
-    mp = to_number(raw_by_code.get("mat_thiluc_cokinh_mp"))
-    mt = to_number(raw_by_code.get("mat_thiluc_cokinh_mt"))
-    if (mp is not None and mp < 8) or (mt is not None and mt < 8):
-        return "H52.7"
-    return None
+def _mat_vision_below8(raw_by_code):
+    """True nếu thị lực có kính (mat_cokinh_mp/mt — cột DV/DW) của ít nhất 1 mắt < 8/10."""
+    mp = to_number(raw_by_code.get("mat_cokinh_mp"))
+    mt = to_number(raw_by_code.get("mat_cokinh_mt"))
+    return (mp is not None and mp < 8) or (mt is not None and mt < 8)
+
+
+def _mat_icd_both_blank(raw_by_code):
+    return is_blank(raw_by_code.get("mat_chandoansobo_icd")) and is_blank(raw_by_code.get("mat_chandoanxacdinh_icd"))
 
 
 def check_mat_rules(raw_by_code):
     """Quy tắc riêng cho khối Mắt (Jo bổ sung) — TẤT CẢ đều ở mức Cảnh báo, không chặn Lưu:
     - mat_phanloai (DI) bắt buộc phải có giá trị (1-5); để trống → Cảnh báo.
-    - mat_phanloai (DI) > 1 mà cả mat_chandoansobo (DG) và mat_chandoanxacdinh (DH) đều trống →
-      Cảnh báo (kèm nói rõ hệ thống có tự điền H52.7 được hay không, dùng đúng điều kiện với
-      compute_data_fixes_for_row để 2 bên luôn khớp nhau)."""
+    - mat_phanloai (DI) >= 2 VÀ thị lực có kính 1 mắt < 8/10 → Cảnh báo, kèm đúng hành động hệ
+      thống sẽ tự làm trong file tải về (xoá trắng mat_chuaphathienbatthuong, và tự điền 'H52.7'
+      cho mat_chandoansobo_icd nếu cả 2 ô chẩn đoán đang trống) — dùng chung điều kiện với
+      compute_data_fixes_for_row() để 2 bên luôn khớp nhau.
+    - mat_phanloai (DI) > 1 mà cả 2 ô chẩn đoán đều trống, nhưng KHÔNG rơi vào điều kiện thị lực
+      < 8/10 ở trên → Cảnh báo riêng, cần bác sĩ tự bổ sung (hệ thống không tự điền được)."""
     issues = []
     di_raw = raw_by_code.get("mat_phanloai")
     if is_blank(di_raw):
@@ -340,24 +345,35 @@ def check_mat_rules(raw_by_code):
             "code": "mat_phanloai", "level": "Cảnh báo",
             "message": "Bắt buộc phải có giá trị (1 đến 5) — đang để trống",
         })
-    elif _mat_needs_icd_autofix(raw_by_code):
-        di_text = clean_ws(di_raw)
-        auto_icd = _mat_autofix_icd_value(raw_by_code)
-        if auto_icd is not None:
+        return issues
+
+    di_num = _mat_phanloai_num(raw_by_code)
+    di_text = clean_ws(di_raw)
+    icd_both_blank = _mat_icd_both_blank(raw_by_code)
+
+    if di_num is not None and di_num >= 2 and _mat_vision_below8(raw_by_code):
+        if icd_both_blank:
             issues.append({
-                "code": "mat_chandoansobo", "level": "Cảnh báo",
-                "message": (f"Đã chọn phân loại {di_text} (lớn hơn 1) nhưng 'Chẩn đoán sơ bộ'/"
-                            f"'Chẩn đoán xác định' đang trống — hệ thống tự điền '{auto_icd}' vào "
-                            "'Chẩn đoán sơ bộ' trong file tải về (do thị lực có kính dưới 8/10), "
-                            "tự kiểm tra lại cho đúng"),
+                "code": "mat_chandoansobo_icd", "level": "Cảnh báo",
+                "message": (f"Đã chọn phân loại {di_text} (≥2) và thị lực có kính dưới 8/10 — hệ "
+                            "thống sẽ tự xoá trắng 'Chưa phát hiện bất thường' và tự điền 'H52.7' "
+                            "vào 'Chẩn đoán sơ bộ' trong file tải về, tự kiểm tra lại cho đúng"),
             })
         else:
             issues.append({
-                "code": "mat_chandoansobo", "level": "Cảnh báo",
-                "message": (f"Đã chọn phân loại {di_text} (lớn hơn 1) nhưng 'Chẩn đoán sơ bộ'/"
-                            "'Chẩn đoán xác định' đang trống, và thị lực có kính chưa đủ để hệ "
-                            "thống tự điền — cần bác sĩ tự bổ sung mã ICD"),
+                "code": "mat_chuaphathienbatthuong", "level": "Cảnh báo",
+                "message": (f"Đã chọn phân loại {di_text} (≥2) và thị lực có kính dưới 8/10 — hệ "
+                            "thống sẽ tự xoá trắng 'Chưa phát hiện bất thường' trong file tải về "
+                            "(đã có chẩn đoán nên không thể là 'chưa phát hiện bất thường'), tự "
+                            "kiểm tra lại"),
             })
+    elif di_num is not None and di_num > 1 and icd_both_blank:
+        issues.append({
+            "code": "mat_chandoansobo_icd", "level": "Cảnh báo",
+            "message": (f"Đã chọn phân loại {di_text} (lớn hơn 1) nhưng 'Chẩn đoán sơ bộ'/"
+                        "'Chẩn đoán xác định' đang trống, và thị lực có kính chưa đủ để hệ thống "
+                        "tự điền — cần bác sĩ tự bổ sung mã ICD"),
+        })
     return issues
 
 
@@ -395,10 +411,11 @@ def compute_data_fixes_for_row(raw_by_code):
         Mắt) có giá trị KHÁC 0 và KHÁC 1 (tức có mã ICD thật, không phải giá trị rác/placeholder) →
         điền cố định 'danh_muc_de_nghi' (cột FP, "Kết Luận") = "Đã có bệnh mạn tính, tiếp tục điều
         trị theo phác đồ/toa cũ" — ghi đè cả khi ô này đã có giá trị khác.
-      - Khối Mắt (mat_binhthuong/mat_chandoansobo/mat_chandoanxacdinh/mat_phanloai) — quy tắc RIÊNG,
-        xem check_mat_rules()/_mat_needs_icd_autofix()/_mat_autofix_icd_value(): mat_phanloai=1 mà
-        mat_binhthuong trống → điền =1; mat_phanloai>1 mà cả 2 ô chẩn đoán đều trống → điền
-        mat_chandoansobo='H52.7' NẾU thị lực có kính <8/10, còn lại chỉ cảnh báo, không tự điền.
+      - Khối Mắt (mat_chuaphathienbatthuong/mat_chandoansobo_icd/mat_chandoanxacdinh_icd/
+        mat_phanloai) — quy tắc RIÊNG, xem check_mat_rules()/_mat_vision_below8(): mat_phanloai=1
+        mà mat_chuaphathienbatthuong trống → điền =1; mat_phanloai>=2 và thị lực có kính <8/10 →
+        xoá trắng mat_chuaphathienbatthuong, và nếu cả 2 ô chẩn đoán đang trống thì điền thêm
+        mat_chandoansobo_icd='H52.7'; các trường hợp khác chỉ cảnh báo, không tự điền.
     """
     fixes = {}
 
@@ -426,18 +443,21 @@ def compute_data_fixes_for_row(raw_by_code):
 
     # Quy tắc RIÊNG cho khối Mắt (Jo bổ sung, THAY THẾ hoàn toàn cách xử lý theo khuôn 4-ô chung ở
     # dưới — mat_* không còn nằm trong SPECIALTY_BLOCKS_4FIELD nữa):
-    #  - mat_phanloai (DI) = 1 mà mat_binhthuong (DF) đang trống → điền DF = 1.
-    #  - mat_phanloai (DI) > 1 mà cả mat_chandoansobo (DG) và mat_chandoanxacdinh (DH) đều trống →
-    #    điền DG = "H52.7" NẾU thị lực có kính 1 trong 2 mắt (DV/DW) < 8; nếu không đủ điều kiện
-    #    này thì KHÔNG tự điền gì (chỉ cảnh báo ở check_mat_rules(), để bác sĩ tự bổ sung).
+    #  - mat_phanloai (DI) = 1 mà mat_chuaphathienbatthuong (DF) đang trống → điền DF = 1.
+    #  - mat_phanloai (DI) >= 2 VÀ thị lực có kính 1 trong 2 mắt (DV/DW) < 8 → xoá trắng DF (không
+    #    thể vừa "bất thường" (DI>=2) vừa "chưa phát hiện bất thường"); NẾU cả mat_chandoansobo_icd
+    #    (DG) và mat_chandoanxacdinh_icd (DH) đều đang trống thì điền thêm DG = "H52.7".
+    #  - mat_phanloai > 1 mà cả DG/DH trống nhưng KHÔNG rơi vào điều kiện thị lực <8 ở trên →
+    #    KHÔNG tự điền gì (chỉ cảnh báo ở check_mat_rules(), để bác sĩ tự bổ sung).
     #  - DG/DH = 0 (giá trị rác) → chuyển null, giống quy tắc chung áp dụng cho 12 khối kia.
-    if val("mat_phanloai") == "1" and blank("mat_binhthuong"):
-        fixes["mat_binhthuong"] = 1
-    if _mat_needs_icd_autofix(raw_by_code):
-        auto_icd = _mat_autofix_icd_value(raw_by_code)
-        if auto_icd is not None:
-            fixes["mat_chandoansobo"] = auto_icd
-    for code in ("mat_chandoansobo", "mat_chandoanxacdinh"):
+    if val("mat_phanloai") == "1" and blank("mat_chuaphathienbatthuong"):
+        fixes["mat_chuaphathienbatthuong"] = 1
+    di_num = _mat_phanloai_num(raw_by_code)
+    if di_num is not None and di_num >= 2 and _mat_vision_below8(raw_by_code):
+        fixes["mat_chuaphathienbatthuong"] = None
+        if _mat_icd_both_blank(raw_by_code):
+            fixes["mat_chandoansobo_icd"] = "H52.7"
+    for code in ("mat_chandoansobo_icd", "mat_chandoanxacdinh_icd"):
         if code not in fixes and _is_literal_zero(raw_by_code.get(code)):
             fixes[code] = None
 
@@ -833,9 +853,9 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
         return issues
 
     # ---- ICD ----
-    # mat_chandoansobo/mat_chandoanxacdinh KHÔNG còn hậu tố "_icd" (đổi theo keyword thật của khối
-    # Mắt) nhưng vẫn là ô mã ICD — liệt kê thẳng tên để không mất kiểm tra định dạng này.
-    if code.endswith("_icd") or code in ("mat_chandoansobo", "mat_chandoanxacdinh"):
+    # mat_chandoansobo_icd/mat_chandoanxacdinh_icd đã đúng hậu tố "_icd" ngay từ đầu (tên thật
+    # trong file), nên chỉ cần điều kiện chung, không cần liệt kê riêng.
+    if code.endswith("_icd"):
         for part in [p.strip() for p in text.split(",") if p.strip()]:
             if not ICD_RE.match(part):
                 issues.append({"level": "Cảnh báo", "message": f"Mã '{part}' không giống định dạng ICD-10 thông thường"})
