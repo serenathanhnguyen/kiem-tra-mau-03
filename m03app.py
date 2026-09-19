@@ -153,10 +153,15 @@ with tab_check:
   `nghenghiep_code`, `noi_cong_tac`, `noi_cong_tac_xa_phuong`; riêng `noi_cong_tac` lúc này chỉ cần
   có dữ liệu, không đối chiếu danh mục `NoiLamViec` (với đối tượng khác thì `noi_cong_tac` không bắt
   buộc, có thể để trống).
-- **13 khối chuyên khoa ở tab Khám lâm sàng** (4 ô: chưa phát hiện bất thường / chẩn đoán sơ bộ /
-  chẩn đoán xác định / phân loại): chọn "chưa phát hiện bất thường" thì không được có ICD và phân
-  loại phải là Loại 1; có ICD (sơ bộ hoặc xác định) thì phân loại phải từ Loại 2 trở lên; ô phân
-  loại không được để trống.
+- **12 khối chuyên khoa ở tab Khám lâm sàng** (4 ô: chưa phát hiện bất thường / chẩn đoán sơ bộ /
+  chẩn đoán xác định / phân loại — KHÔNG gồm khối Mắt, xem quy tắc riêng cho Mắt bên dưới): chọn
+  "chưa phát hiện bất thường" thì không được có ICD và phân loại phải là Loại 1; có ICD (sơ bộ hoặc
+  xác định) thì phân loại phải từ Loại 2 trở lên; ô phân loại không được để trống.
+- **Khối Mắt** (`mat_binhthuong`/`mat_chandoansobo`/`mat_chandoanxacdinh`/`mat_phanloai`) — quy tắc
+  RIÊNG, chỉ ở mức **Cảnh báo** (không chặn Lưu):
+  - `mat_phanloai` bắt buộc phải có giá trị (1-5); để trống → Cảnh báo.
+  - `mat_phanloai` > 1 mà cả `mat_chandoansobo` và `mat_chandoanxacdinh` đều trống → Cảnh báo (xem
+    mục tự sửa dữ liệu bên dưới về việc có tự điền được hay không).
 - **Sản khoa / Phụ khoa** (có thêm ô "từ chối khám" ở đầu): nếu chọn "từ chối khám" thì không bắt
   buộc chọn phân loại; nếu không từ chối khám thì áp dụng đúng quy tắc 4 ô như các khối chuyên khoa
   khác ở trên.
@@ -168,8 +173,8 @@ with tab_check:
   chỉ số, lấy loại kém hơn.
 - **Tự đề xuất điền khi đang để trống** (chỉ áp dụng trong file Excel tải về, không tính là lỗi/cảnh báo):
   - Ô **Kết luận** (`danh_muc_de_nghi`): xét các ô `*_phanloai`, `*_chandoansobo_icd`,
-    `*_chandoanxacdinh_icd` của 13 khối chuyên khoa (và Sản khoa/Phụ khoa, trừ khối đã chọn "từ chối
-    khám"). Theo thứ tự — luôn điền ra 1 trong 3 giá trị, không để trống:
+    `*_chandoanxacdinh_icd` của 12 khối chuyên khoa (và Sản khoa/Phụ khoa, trừ khối đã chọn "từ chối
+    khám") — KHÔNG gồm khối Mắt. Theo thứ tự — luôn điền ra 1 trong 3 giá trị, không để trống:
     1) có ít nhất 1 khối `*_phanloai` > 1 **và** có ít nhất 1 `*_chandoanxacdinh_icd` được điền →
        "Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ";
     2) ngược lại, có ít nhất 1 `*_chandoansobo_icd` được điền → "Có yếu tố nguy cơ, cần theo dõi
@@ -182,13 +187,15 @@ with tab_check:
     Phụ khoa — cột AY, AZ, CV đến DE) được **xoá trắng** nếu lỡ có dữ liệu.
   - **Giới tính Nữ** (cột `gioi_tinh` = 2): ô "Có thai sản không" (cột AY) nếu đang là 0 hoặc 1 thì
     giữ nguyên; nếu là chữ "Không" thì chỉnh về **0**.
-  - **Cột AA đến AU** (21 câu tiền sử bệnh dạng Có/Không): chỉ nhận 0 hoặc 1 — ô đã điền giá trị
-    khác "1" thì chỉnh về **0**.
+  - **Cột AB đến AU** (20 câu tiền sử bệnh dạng Có/Không, mã field đã đổi theo đúng keyword thật —
+    `ts_than_kinh_dau`, `ts_mat`, `ts_tai`...): chỉ nhận 0 hoặc 1 — có dữ liệu mà khác "1" thì
+    chỉnh về **0**; **để trống cũng chỉnh về 0** và báo **Cảnh báo** (trước đây bỏ qua ô trống,
+    giờ không còn nữa).
   - **Chỉ số sinh tồn** (cột BA-BF: chiều cao 120-210, cân nặng 25-200, nhịp thở 12-20, mạch 60-100,
     huyết áp tâm thu 90-120, huyết áp tâm trương 60-80): nếu giá trị nằm **ngoài khoảng cho phép** thì
     báo **Cảnh báo** kèm ghi chú, và ô được tô màu trong file tải về.
-  - **Các cột `*_chandoansobo_icd` / `*_chandoanxacdinh_icd`** (phạm vi cột BI đến DB): nếu giá trị là
-    **0** thì chuyển thành **trống (null)**.
+  - **Các cột `*_chandoansobo_icd` / `*_chandoanxacdinh_icd`** (12 khối chuyên khoa, KHÔNG gồm
+    Mắt): nếu giá trị là **0** thì chuyển thành **trống (null)**.
   - **Loại khám** (cột ED): nếu đang trống → điền mặc định **= 2**.
   - **Số lượng hồng cầu** (cột EE, `kskdk_xnm_slhc`): nếu đang trống → điền mặc định **= 0**.
   - **`*_tuchoikham`** (cột CV: `sankhoa_tuchoikham`, cột DA: `phukhoa_tuchoikham`) = 1: cột phân loại
@@ -204,13 +211,20 @@ with tab_check:
   - **`doi_tuong_kham`** (cột C) = **3** (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên)
     → điền cố định **`hinh_thuc_chi_tra_khamsk`** (cột V) = **"Ngân sách thành phố hỗ trợ"** và
     **`hinh_thuc_chi_tra_khamsk_chi_tiet`** (cột W) = **"Khám Theo Hợp Đồng"**.
-  - 1 khối chuyên khoa có **`*_chandoansobo_icd`** hoặc **`*_chandoanxacdinh_icd`** khác 0 (có ICD
-    thật) → ô **`*_chuaphathienbatthuong`** (ô "Chưa phát hiện bất thường") của đúng khối đó chuyển
-    thành **trống (null)**.
-  - Bất kỳ ô **`*_chandoanxacdinh_icd`** nào (13 khối chuyên khoa + Sản khoa/Phụ khoa) có giá trị
-    **khác 0 và khác 1** (mã ICD thật) → điền cố định **`danh_muc_de_nghi`** (cột FP, "Kết Luận") =
-    **"Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ"** — ghi đè cả khi ô này đã có
-    giá trị khác.
+  - 1 khối chuyên khoa (KHÔNG gồm Mắt) có **`*_chandoansobo_icd`** hoặc **`*_chandoanxacdinh_icd`**
+    khác 0 (có ICD thật) → ô **`*_chuaphathienbatthuong`** (ô "Chưa phát hiện bất thường") của đúng
+    khối đó chuyển thành **trống (null)**.
+  - Bất kỳ ô **`*_chandoanxacdinh_icd`** nào (12 khối chuyên khoa + Sản khoa/Phụ khoa, KHÔNG gồm
+    Mắt) có giá trị **khác 0 và khác 1** (mã ICD thật) → điền cố định **`danh_muc_de_nghi`** (cột
+    FP, "Kết Luận") = **"Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ"** — ghi đè cả
+    khi ô này đã có giá trị khác.
+  - **Khối Mắt** — quy tắc RIÊNG, không dùng chung khuôn 12 khối kia:
+    - `mat_phanloai` = 1 mà `mat_binhthuong` đang trống → điền **= 1**.
+    - `mat_phanloai` > 1 mà cả `mat_chandoansobo` và `mat_chandoanxacdinh` đều trống → điền
+      `mat_chandoansobo` = **"H52.7"** NẾU thị lực có kính 1 trong 2 mắt (`mat_thiluc_cokinh_mp`/
+      `mat_thiluc_cokinh_mt`) **dưới 8/10**; nếu không đủ điều kiện này thì KHÔNG tự điền gì (chỉ
+      báo Cảnh báo, cần bác sĩ tự bổ sung mã ICD).
+    - `mat_chandoansobo`/`mat_chandoanxacdinh` = 0 (giá trị rác) → chuyển thành **trống (null)**.
 - **Nhận diện cấu trúc file linh hoạt**: công cụ tự tìm dòng "mã field" (keyword) trong 15 dòng đầu
   của sheet thay vì cố định ở dòng 4 — chỉ cần file upload có dòng keyword giống file mẫu (dựa trên
   các mã quen thuộc như `ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`), dữ liệu sẽ được
@@ -219,8 +233,9 @@ with tab_check:
 - **File Excel tải về không bị khoá/bảo vệ**: vẫn có thể filter, xoá dòng/cột, copy, paste bình
   thường như file gốc.
 - **3 cặp đo thị lực Mắt** (không kính / kính lỗ / có kính, mỗi cặp gồm mắt phải + mắt trái): phải
-  điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với 2 cặp "kính lỗ" và
-  "có kính" — điền cặp này thì không điền cặp kia.
+  điền theo từng cặp (cùng có hoặc cùng trống); cặp "không kính" loại trừ với cặp "kính lỗ" — điền
+  cặp này thì không điền cặp kia. Cặp "không kính" và cặp "có kính" **được phép điền cùng nhau**
+  (đã bỏ loại trừ giữa 2 cặp này theo yêu cầu mới).
 - **`giadinh_macbenh` và `giadinh_danhsachbenh_icd`** chỉ ở mức **cảnh báo**, không chặn nhập liệu.
 - **Khoảng trắng ẩn** (dấu cách không ngắt `\\xa0`, ký tự rộng-0...) trong bất kỳ ô chữ nào — dấu vết
   hay gặp khi copy dữ liệu từ web/PDF, từng gây lỗi "điền thành công giả" ở Nơi công tác. (Không áp
