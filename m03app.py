@@ -157,11 +157,13 @@ with tab_check:
   chẩn đoán xác định / phân loại — KHÔNG gồm khối Mắt, xem quy tắc riêng cho Mắt bên dưới): chọn
   "chưa phát hiện bất thường" thì không được có ICD và phân loại phải là Loại 1; có ICD (sơ bộ hoặc
   xác định) thì phân loại phải từ Loại 2 trở lên; ô phân loại không được để trống.
-- **Khối Mắt** (`mat_binhthuong`/`mat_chandoansobo`/`mat_chandoanxacdinh`/`mat_phanloai`) — quy tắc
-  RIÊNG, chỉ ở mức **Cảnh báo** (không chặn Lưu):
+- **Khối Mắt** (`mat_chuaphathienbatthuong`/`mat_chandoansobo_icd`/`mat_chandoanxacdinh_icd`/
+  `mat_phanloai`) — quy tắc RIÊNG, chỉ ở mức **Cảnh báo** (không chặn Lưu):
   - `mat_phanloai` bắt buộc phải có giá trị (1-5); để trống → Cảnh báo.
-  - `mat_phanloai` > 1 mà cả `mat_chandoansobo` và `mat_chandoanxacdinh` đều trống → Cảnh báo (xem
-    mục tự sửa dữ liệu bên dưới về việc có tự điền được hay không).
+  - `mat_phanloai` >= 2 và thị lực có kính 1 mắt dưới 8/10 → Cảnh báo (xem mục tự sửa dữ liệu bên
+    dưới về việc hệ thống tự xoá/tự điền gì).
+  - `mat_phanloai` > 1 mà cả `mat_chandoansobo_icd` và `mat_chandoanxacdinh_icd` đều trống, nhưng
+    KHÔNG rơi vào điều kiện thị lực ở trên → Cảnh báo riêng, cần bác sĩ tự bổ sung.
 - **Sản khoa / Phụ khoa** (có thêm ô "từ chối khám" ở đầu): nếu chọn "từ chối khám" thì không bắt
   buộc chọn phân loại; nếu không từ chối khám thì áp dụng đúng quy tắc 4 ô như các khối chuyên khoa
   khác ở trên.
@@ -187,10 +189,9 @@ with tab_check:
     Phụ khoa — cột AY, AZ, CV đến DE) được **xoá trắng** nếu lỡ có dữ liệu.
   - **Giới tính Nữ** (cột `gioi_tinh` = 2): ô "Có thai sản không" (cột AY) nếu đang là 0 hoặc 1 thì
     giữ nguyên; nếu là chữ "Không" thì chỉnh về **0**.
-  - **Cột AB đến AU** (20 câu tiền sử bệnh dạng Có/Không, mã field đã đổi theo đúng keyword thật —
-    `ts_than_kinh_dau`, `ts_mat`, `ts_tai`...): chỉ nhận 0 hoặc 1 — có dữ liệu mà khác "1" thì
-    chỉnh về **0**; **để trống cũng chỉnh về 0** và báo **Cảnh báo** (trước đây bỏ qua ô trống,
-    giờ không còn nữa).
+  - **Cột AA đến AU** (21 câu tiền sử bệnh dạng Có/Không): chỉ nhận 0 hoặc 1 — có dữ liệu mà khác
+    "1" thì chỉnh về **0**; **để trống cũng chỉnh về 0** và báo **Cảnh báo** (trước đây bỏ qua ô
+    trống, giờ không còn nữa).
   - **Chỉ số sinh tồn** (cột BA-BF: chiều cao 120-210, cân nặng 25-200, nhịp thở 12-20, mạch 60-100,
     huyết áp tâm thu 90-120, huyết áp tâm trương 60-80): nếu giá trị nằm **ngoài khoảng cho phép** thì
     báo **Cảnh báo** kèm ghi chú, và ô được tô màu trong file tải về.
@@ -219,12 +220,12 @@ with tab_check:
     FP, "Kết Luận") = **"Đã có bệnh mạn tính, tiếp tục điều trị theo phác đồ/toa cũ"** — ghi đè cả
     khi ô này đã có giá trị khác.
   - **Khối Mắt** — quy tắc RIÊNG, không dùng chung khuôn 12 khối kia:
-    - `mat_phanloai` = 1 mà `mat_binhthuong` đang trống → điền **= 1**.
-    - `mat_phanloai` > 1 mà cả `mat_chandoansobo` và `mat_chandoanxacdinh` đều trống → điền
-      `mat_chandoansobo` = **"H52.7"** NẾU thị lực có kính 1 trong 2 mắt (`mat_thiluc_cokinh_mp`/
-      `mat_thiluc_cokinh_mt`) **dưới 8/10**; nếu không đủ điều kiện này thì KHÔNG tự điền gì (chỉ
-      báo Cảnh báo, cần bác sĩ tự bổ sung mã ICD).
-    - `mat_chandoansobo`/`mat_chandoanxacdinh` = 0 (giá trị rác) → chuyển thành **trống (null)**.
+    - `mat_phanloai` = 1 mà `mat_chuaphathienbatthuong` đang trống → điền **= 1**.
+    - `mat_phanloai` >= 2 và thị lực có kính 1 trong 2 mắt (`mat_cokinh_mp`/`mat_cokinh_mt`)
+      **dưới 8/10** → xoá trắng `mat_chuaphathienbatthuong`; nếu lúc đó cả `mat_chandoansobo_icd`
+      và `mat_chandoanxacdinh_icd` đều đang trống thì điền thêm `mat_chandoansobo_icd` =
+      **"H52.7"**. Nếu 2 ô chẩn đoán đã có ICD thật thì chỉ xoá trắng, không đè lên ICD có sẵn.
+    - `mat_chandoansobo_icd`/`mat_chandoanxacdinh_icd` = 0 (giá trị rác) → chuyển **trống (null)**.
 - **Nhận diện cấu trúc file linh hoạt**: công cụ tự tìm dòng "mã field" (keyword) trong 15 dòng đầu
   của sheet thay vì cố định ở dòng 4 — chỉ cần file upload có dòng keyword giống file mẫu (dựa trên
   các mã quen thuộc như `ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`), dữ liệu sẽ được
