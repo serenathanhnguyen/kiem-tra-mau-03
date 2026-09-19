@@ -107,6 +107,17 @@ def merge_mau03_files(sources):
     wb = openpyxl.load_workbook(BytesIO(base["file_bytes"]))  # không data_only — giữ định dạng để lưu lại
     ws = wb[SHEET_MAIN]
 
+    # Tắt khoá bảo vệ (Protect Sheet) mang theo từ file nền — cùng lỗi và cùng cách vá như
+    # annotate_workbook() trong validators.py: không tắt thì Excel tự ẩn/xám bớt nút Home/Filter
+    # ở file ghép tải về. Chỉ đổi thuộc tính bảo vệ hiển thị, không đụng cấu trúc/dữ liệu nên
+    # không ảnh hưởng chuẩn import Medinet.
+    for sh in wb.worksheets:
+        sh.protection.sheet = False
+    try:
+        wb.security = None
+    except Exception:
+        pass
+
     # Xoá sạch vùng dữ liệu cũ (kể cả của chính file nền) — sẽ ghi lại TOÀN BỘ theo đúng thứ tự
     # ghép bên dưới, tránh sót dòng thừa nếu tổng số dòng ghép ít hơn số dòng gốc của file nền.
     old_last_row = find_last_data_row(
