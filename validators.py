@@ -1127,6 +1127,17 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
     wb = openpyxl.load_workbook(BytesIO(file_bytes))   # giữ nguyên, KHÔNG data_only (để lưu lại được)
     ws = wb[SHEET_MAIN]
 
+    # Tắt khoá bảo vệ (Protect Sheet) mang theo từ file mẫu gốc trên MỌI sheet — nếu không tắt,
+    # Excel sẽ tự ẩn/xám bớt nhiều nút ở Home và Filter khi mở file tải về, khiến không gõ sửa
+    # được dữ liệu. Việc này chỉ đổi thuộc tính bảo vệ hiển thị của Excel, KHÔNG đụng tới cấu trúc
+    # cột/mã field/dữ liệu nên không ảnh hưởng gì tới chuẩn import Medinet.
+    for sh in wb.worksheets:
+        sh.protection.sheet = False
+    try:
+        wb.security = None   # tắt luôn khoá cấu trúc workbook (ẩn/hiện/xoá sheet) nếu file mẫu có đặt
+    except Exception:
+        pass
+
     label_row, code_row, data_start_row, _note = detect_layout_rows(ws)
     col_map = _build_code_col_map(ws, code_row)
 
