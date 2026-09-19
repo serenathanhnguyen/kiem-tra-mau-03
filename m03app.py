@@ -1,10 +1,13 @@
+import os
 from datetime import datetime
 from io import BytesIO
 
 import pandas as pd
 import streamlit as st
 
-from validators import validate_workbook, annotate_workbook, SHEET_MAIN, DE_NGHI_DEFAULT_VALUE
+from validators import (
+    validate_workbook, annotate_workbook, annotate_workbook_raw, SHEET_MAIN, DE_NGHI_DEFAULT_VALUE,
+)
 from merger import read_source_file, merge_mau03_files, default_unit_label
 
 st.set_page_config(page_title="Kiểm tra & ghép file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
@@ -34,6 +37,10 @@ with tab_check:
         except Exception as e:
             st.error(f"Không đọc được file: {e}")
             st.stop()
+
+        # Tên file gốc (bỏ phần đuôi .xlsx) — dùng làm gốc để đặt tên các file tải về bên dưới,
+        # để Jo biết ngay file tải về ứng với đúng file gốc nào đã tải lên.
+        orig_stem = os.path.splitext(uploaded.name)[0]
 
         n_errors = int((issues_df["Mức độ"] == "Lỗi").sum()) if not issues_df.empty else 0
         n_warnings = int((issues_df["Mức độ"] == "Cảnh báo").sum()) if not issues_df.empty else 0
@@ -70,7 +77,7 @@ with tab_check:
             st.download_button(
                 "⬇ Tải file Excel đã kiểm tra (đã tự sửa dữ liệu + canh giữa + đánh dấu ô lỗi)",
                 data=annotated,
-                file_name="mau03_da_kiem_tra.xlsx",
+                file_name=f"{orig_stem} - đã check.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="dl_annotated",
             )
@@ -87,6 +94,25 @@ with tab_check:
         except Exception as e:
             st.warning(f"Không tạo được file Excel đã đánh dấu: {e}")
 
+        # File Excel giữ NGUYÊN dữ liệu gốc đã tải lên — không tự sửa/tự điền gì cả, chỉ tô màu +
+        # ghi chú vào đúng các ô đang sai quy tắc, để tự xem và tự sửa theo đúng dữ liệu của mình.
+        try:
+            raw_marked = annotate_workbook_raw(uploaded.getvalue(), issues_df)
+            st.download_button(
+                "⬇ Tải file Excel gốc (giữ nguyên dữ liệu, chỉ đánh dấu ô sai quy tắc)",
+                data=raw_marked,
+                file_name=f"{orig_stem} - đã check (giữ dữ liệu gốc).xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_raw_marked",
+            )
+            st.caption(
+                "File này **giữ nguyên y hệt** dữ liệu đã tải lên (không tự điền Phân Loại thể lực, "
+                "không tự sửa gì cả) — chỉ tô màu **đỏ** (lỗi) / **vàng** (cảnh báo) và ghi chú vào "
+                "đúng ô đang sai để bạn tự xem và tự sửa. File cũng không bị khoá."
+            )
+        except Exception as e:
+            st.warning(f"Không tạo được file Excel gốc đã đánh dấu: {e}")
+
         if not issues_df.empty:
             buf = BytesIO()
             with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -94,7 +120,7 @@ with tab_check:
             st.download_button(
                 "⬇ Tải báo cáo lỗi dạng bảng (Excel)",
                 data=buf.getvalue(),
-                file_name="bao_cao_kiem_tra_mau03.xlsx",
+                file_name=f"{orig_stem} - đã check (bao cao loi).xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="dl_report",
             )
