@@ -318,26 +318,19 @@ def _mat_phanloai_num(raw_by_code):
     return to_number(raw_by_code.get("mat_phanloai"))
 
 
-def _mat_vision_below8(raw_by_code):
-    """True nếu thị lực có kính (mat_cokinh_mp/mt — cột DV/DW) của ít nhất 1 mắt < 8/10."""
-    mp = to_number(raw_by_code.get("mat_cokinh_mp"))
-    mt = to_number(raw_by_code.get("mat_cokinh_mt"))
-    return (mp is not None and mp < 8) or (mt is not None and mt < 8)
-
-
 def _mat_icd_both_blank(raw_by_code):
     return is_blank(raw_by_code.get("mat_chandoansobo_icd")) and is_blank(raw_by_code.get("mat_chandoanxacdinh_icd"))
 
 
 def check_mat_rules(raw_by_code):
-    """Quy tắc riêng cho khối Mắt (Jo bổ sung) — TẤT CẢ đều ở mức Cảnh báo, không chặn Lưu:
+    """Quy tắc riêng cho khối Mắt (theo file quy tắc mới của Jo, 24/09/2026 — ĐÃ BỎ HẲN điều kiện
+    thị lực có kính < 8/10 dùng trước đây) — TẤT CẢ đều ở mức Cảnh báo, không chặn Lưu:
     - mat_phanloai (DI) bắt buộc phải có giá trị (1-5); để trống → Cảnh báo.
-    - mat_phanloai (DI) >= 2 VÀ thị lực có kính 1 mắt < 8/10 → Cảnh báo, kèm đúng hành động hệ
-      thống sẽ tự làm trong file tải về (xoá trắng mat_chuaphathienbatthuong, và tự điền 'H52.7'
-      cho mat_chandoansobo_icd nếu cả 2 ô chẩn đoán đang trống) — dùng chung điều kiện với
-      compute_data_fixes_for_row() để 2 bên luôn khớp nhau.
-    - mat_phanloai (DI) > 1 mà cả 2 ô chẩn đoán đều trống, nhưng KHÔNG rơi vào điều kiện thị lực
-      < 8/10 ở trên → Cảnh báo riêng, cần bác sĩ tự bổ sung (hệ thống không tự điền được)."""
+    - mat_phanloai (DI) = 2 VÀ cả 2 ô chẩn đoán (sơ bộ + xác định) đều đang trống → Cảnh báo, hệ
+      thống sẽ tự xoá trắng mat_chuaphathienbatthuong và tự điền 'H52.7' vào mat_chandoansobo_icd
+      trong file tải về — dùng chung điều kiện với compute_data_fixes_for_row() để 2 bên luôn khớp.
+    - mat_phanloai (DI) > 2 mà cả 2 ô chẩn đoán đều trống → Cảnh báo riêng, cần bác sĩ tự bổ sung
+      (hệ thống không tự điền được, quy tắc chỉ tự điền sẵn cho đúng trường hợp =2)."""
     issues = []
     di_raw = raw_by_code.get("mat_phanloai")
     if is_blank(di_raw):
@@ -351,30 +344,113 @@ def check_mat_rules(raw_by_code):
     di_text = clean_ws(di_raw)
     icd_both_blank = _mat_icd_both_blank(raw_by_code)
 
-    if di_num is not None and di_num >= 2 and _mat_vision_below8(raw_by_code):
-        if icd_both_blank:
-            issues.append({
-                "code": "mat_chandoansobo_icd", "level": "Cảnh báo",
-                "message": (f"Đã chọn phân loại {di_text} (≥2) và thị lực có kính dưới 8/10 — hệ "
-                            "thống sẽ tự xoá trắng 'Chưa phát hiện bất thường' và tự điền 'H52.7' "
-                            "vào 'Chẩn đoán sơ bộ' trong file tải về, tự kiểm tra lại cho đúng"),
-            })
-        else:
-            issues.append({
-                "code": "mat_chuaphathienbatthuong", "level": "Cảnh báo",
-                "message": (f"Đã chọn phân loại {di_text} (≥2) và thị lực có kính dưới 8/10 — hệ "
-                            "thống sẽ tự xoá trắng 'Chưa phát hiện bất thường' trong file tải về "
-                            "(đã có chẩn đoán nên không thể là 'chưa phát hiện bất thường'), tự "
-                            "kiểm tra lại"),
-            })
-    elif di_num is not None and di_num > 1 and icd_both_blank:
+    if di_num == 2 and icd_both_blank:
         issues.append({
             "code": "mat_chandoansobo_icd", "level": "Cảnh báo",
-            "message": (f"Đã chọn phân loại {di_text} (lớn hơn 1) nhưng 'Chẩn đoán sơ bộ'/"
-                        "'Chẩn đoán xác định' đang trống, và thị lực có kính chưa đủ để hệ thống "
-                        "tự điền — cần bác sĩ tự bổ sung mã ICD"),
+            "message": (f"Đã chọn phân loại {di_text} và cả 2 ô chẩn đoán đang trống — hệ thống sẽ "
+                        "tự xoá trắng 'Chưa phát hiện bất thường' và tự điền 'H52.7' vào 'Chẩn đoán "
+                        "sơ bộ' trong file tải về, tự kiểm tra lại cho đúng"),
+        })
+    elif di_num is not None and di_num > 2 and icd_both_blank:
+        issues.append({
+            "code": "mat_chandoansobo_icd", "level": "Cảnh báo",
+            "message": (f"Đã chọn phân loại {di_text} (lớn hơn 2) nhưng 'Chẩn đoán sơ bộ'/"
+                        "'Chẩn đoán xác định' đang trống — cần bác sĩ tự bổ sung mã ICD, hệ thống "
+                        "không tự điền được cho trường hợp này"),
         })
     return issues
+
+
+# ============================================================
+# QUY TẮC RIÊNG: SỬA GIỚI TÍNH + NĂM SINH (file quy tắc Jo gửi 24/09/2026)
+# Thứ tự ưu tiên: (1) Họ tên có chữ "Thị" -> Nữ (2), có chữ "Văn" -> Nam (1); (2) sau đó đối
+# chiếu ký tự thứ 4 của CCCD với giới tính (đã áp bước 1) — lệch thì sửa theo CCCD; (3) đối
+# chiếu năm sinh với CCCD — lệch thì sửa năm sinh theo CCCD. MỌI chỗ đã tự sửa đều phải hiện
+# Cảnh báo (yêu cầu rõ của Jo) — dùng chung 1 hàm cho cả bước tự sửa dữ liệu
+# (compute_data_fixes_for_row) lẫn bước hiện cảnh báo (check_gioitinh_ngaysinh_rules) để không
+# có 2 nơi định nghĩa khác nhau.
+# ============================================================
+
+def compute_gioitinh_ngaysinh_fixes(raw_by_code):
+    """Trả về (fixes, warnings, effective_gioi_tinh):
+    - fixes: dict {mã field: giá trị mới} cần ghi đè (gioi_tinh và/hoặc ngay_sinh).
+    - warnings: list (mã field, thông báo) cho mọi chỗ đã tự sửa.
+    - effective_gioi_tinh: giá trị giới tính SAU KHI áp các bước sửa ở trên (dùng cho các quy
+      tắc tự sửa dữ liệu khác phụ thuộc giới tính, vì Jo yêu cầu 'sửa giới tính trước')."""
+    fixes = {}
+    warnings = []
+
+    def val(c):
+        return clean_ws(raw_by_code.get(c))
+
+    ho_ten = clean_ws(raw_by_code.get("ho_ten"))
+    original_gt = val("gioi_tinh")
+    effective_gt = original_gt
+
+    # 1) Họ tên có chữ đệm "Thị" -> Nữ (2); có chữ đệm "Văn" -> Nam (1).
+    ten_tokens = set(norm_key(ho_ten).split(" "))
+    if "thị" in ten_tokens and effective_gt != "2":
+        fixes["gioi_tinh"] = 2
+        warnings.append((
+            "gioi_tinh",
+            f"Họ tên có chữ đệm 'Thị' — tự sửa Giới tính thành Nữ (2), giá trị gốc là "
+            f"'{original_gt or '(trống)'}'",
+        ))
+        effective_gt = "2"
+    elif "văn" in ten_tokens and effective_gt != "1":
+        fixes["gioi_tinh"] = 1
+        warnings.append((
+            "gioi_tinh",
+            f"Họ tên có chữ đệm 'Văn' — tự sửa Giới tính thành Nam (1), giá trị gốc là "
+            f"'{original_gt or '(trống)'}'",
+        ))
+        effective_gt = "1"
+
+    # 2) Đối chiếu với CCCD — ký tự thứ 4: chẵn -> Nam (1), lẻ -> Nữ (2).
+    cccd = val("dinh_danh_ca_nhan")
+    d4 = None
+    if CCCD_RE.match(cccd):
+        d4 = int(cccd[3])
+        expected_gt = "1" if d4 % 2 == 0 else "2"
+        if effective_gt in ("1", "2") and effective_gt != expected_gt:
+            fixes["gioi_tinh"] = int(expected_gt)
+            ten = "Nam" if expected_gt == "1" else "Nữ"
+            warnings.append((
+                "gioi_tinh",
+                f"Giới tính không khớp CCCD (ký tự thứ 4 '{cccd[3]}' cho biết là {ten}) — tự sửa "
+                f"lại Giới tính, giá trị trước khi sửa là '{effective_gt}'",
+            ))
+            effective_gt = expected_gt
+
+    # 3) Đối chiếu năm sinh với CCCD (ký tự 4-6) — lệch thì sửa lại năm sinh theo CCCD.
+    if d4 is not None:
+        yy = int(cccd[4:6])
+        century = 1900 + (d4 // 2) * 100
+        year_cccd = century + yy
+        d, err = parse_date_cell(raw_by_code.get("ngay_sinh"))
+        if d is not None and d.year != year_cccd:
+            try:
+                new_date = d.replace(year=year_cccd)
+            except ValueError:
+                new_date = d.replace(year=year_cccd, day=28)  # phòng ca 29/2 rơi vào năm không nhuận
+            fixes["ngay_sinh"] = new_date
+            warnings.append((
+                "ngay_sinh",
+                f"Năm sinh ({d.year}) không khớp CCCD (ký tự 4-6 '{cccd[3:6]}' cho biết năm sinh "
+                f"phải là {year_cccd}) — tự sửa lại Ngày sinh thành {new_date.strftime('%d/%m/%Y')}",
+            ))
+
+    return fixes, warnings, effective_gt
+
+
+def check_gioitinh_ngaysinh_rules(raw_by_code):
+    """Sinh Cảnh báo cho MỌI chỗ compute_gioitinh_ngaysinh_fixes() đã tự sửa — dùng chung điều
+    kiện với hàm đó để bảng cảnh báo luôn khớp đúng với file Excel tự sửa tải về."""
+    _fixes, warnings, _gt = compute_gioitinh_ngaysinh_fixes(raw_by_code)
+    return [
+        {"code": code, "level": "Cảnh báo", "message": f"{msg} (đã tự sửa trong file tải về)"}
+        for code, msg in warnings
+    ]
 
 
 def compute_data_fixes_for_row(raw_by_code):
@@ -412,10 +488,16 @@ def compute_data_fixes_for_row(raw_by_code):
         điền cố định 'danh_muc_de_nghi' (cột FP, "Kết Luận") = "Đã có bệnh mạn tính, tiếp tục điều
         trị theo phác đồ/toa cũ" — ghi đè cả khi ô này đã có giá trị khác.
       - Khối Mắt (mat_chuaphathienbatthuong/mat_chandoansobo_icd/mat_chandoanxacdinh_icd/
-        mat_phanloai) — quy tắc RIÊNG, xem check_mat_rules()/_mat_vision_below8(): mat_phanloai=1
-        mà mat_chuaphathienbatthuong trống → điền =1; mat_phanloai>=2 và thị lực có kính <8/10 →
-        xoá trắng mat_chuaphathienbatthuong, và nếu cả 2 ô chẩn đoán đang trống thì điền thêm
-        mat_chandoansobo_icd='H52.7'; các trường hợp khác chỉ cảnh báo, không tự điền.
+        mat_phanloai) — quy tắc RIÊNG (đã cập nhật theo file quy tắc 24/09/2026, BỎ điều kiện thị
+        lực), xem check_mat_rules(): mat_phanloai=1 và cả 2 ô chẩn đoán trống → điền
+        mat_chuaphathienbatthuong=1; mat_phanloai=2 và cả 2 ô chẩn đoán trống → xoá trắng
+        mat_chuaphathienbatthuong và điền mat_chandoansobo_icd='H52.7'; mat_phanloai và
+        mat_chuaphathienbatthuong đều đang trống → điền cả 2 = 1; các trường hợp khác (phanloai>2
+        mà chẩn đoán trống) chỉ cảnh báo, không tự điền.
+      - Giới tính (gioi_tinh) và Ngày sinh (ngay_sinh): áp dụng TRƯỚC TIÊN theo
+        compute_gioitinh_ngaysinh_fixes() (họ tên có 'Thị'/'Văn', rồi đối chiếu CCCD) — các quy
+        tắc theo giới tính bên dưới (xoá ô nữ khi Nam, tự điền Sản khoa/Phụ khoa khi Nữ...) dùng
+        GIÁ TRỊ GIỚI TÍNH ĐÃ SỬA, không dùng giá trị gốc trong Excel.
     """
     fixes = {}
 
@@ -425,7 +507,10 @@ def compute_data_fixes_for_row(raw_by_code):
     def val(c):
         return clean_ws(raw_by_code.get(c))
 
-    gt = val("gioi_tinh")
+    # Sửa giới tính + năm sinh TRƯỚC (theo file quy tắc Jo gửi 24/09/2026) — các quy tắc theo giới
+    # tính bên dưới đều phải dùng giá trị ĐÃ SỬA (effective_gt), không dùng giá trị gốc trong Excel.
+    gt_fixes, _gt_warnings, gt = compute_gioitinh_ngaysinh_fixes(raw_by_code)
+    fixes.update(gt_fixes)
 
     if gt == "1":
         for code in MALE_EXCLUDED_FIELDS:
@@ -441,22 +526,26 @@ def compute_data_fixes_for_row(raw_by_code):
         if val(code) != "1":
             fixes[code] = 0
 
-    # Quy tắc RIÊNG cho khối Mắt (Jo bổ sung, THAY THẾ hoàn toàn cách xử lý theo khuôn 4-ô chung ở
-    # dưới — mat_* không còn nằm trong SPECIALTY_BLOCKS_4FIELD nữa):
-    #  - mat_phanloai (DI) = 1 mà mat_chuaphathienbatthuong (DF) đang trống → điền DF = 1.
-    #  - mat_phanloai (DI) >= 2 VÀ thị lực có kính 1 trong 2 mắt (DV/DW) < 8 → xoá trắng DF (không
-    #    thể vừa "bất thường" (DI>=2) vừa "chưa phát hiện bất thường"); NẾU cả mat_chandoansobo_icd
-    #    (DG) và mat_chandoanxacdinh_icd (DH) đều đang trống thì điền thêm DG = "H52.7".
-    #  - mat_phanloai > 1 mà cả DG/DH trống nhưng KHÔNG rơi vào điều kiện thị lực <8 ở trên →
-    #    KHÔNG tự điền gì (chỉ cảnh báo ở check_mat_rules(), để bác sĩ tự bổ sung).
+    # Quy tắc RIÊNG cho khối Mắt (theo file quy tắc Jo gửi 24/09/2026, ĐÃ BỎ điều kiện thị lực —
+    # THAY THẾ hoàn toàn cách xử lý theo khuôn 4-ô chung ở dưới, mat_* không nằm trong
+    # SPECIALTY_BLOCKS_4FIELD):
+    #  - mat_phanloai (DI) và mat_chuaphathienbatthuong (DF) đều đang trống → điền cả 2 = 1.
+    #  - mat_phanloai (DI) = 1 và cả 2 ô chẩn đoán (DG/DH) đang trống → điền DF = 1.
+    #  - mat_phanloai (DI) = 2 và cả 2 ô chẩn đoán (DG/DH) đang trống → xoá trắng DF (không thể vừa
+    #    "bất thường" vừa "chưa phát hiện bất thường"), và điền DG = "H52.7".
+    #  - mat_phanloai > 2 mà cả DG/DH trống → KHÔNG tự điền gì (chỉ cảnh báo ở check_mat_rules(),
+    #    để bác sĩ tự bổ sung — quy tắc mới chỉ tự điền sẵn cho đúng trường hợp =2).
     #  - DG/DH = 0 (giá trị rác) → chuyển null, giống quy tắc chung áp dụng cho 12 khối kia.
-    if val("mat_phanloai") == "1" and blank("mat_chuaphathienbatthuong"):
-        fixes["mat_chuaphathienbatthuong"] = 1
     di_num = _mat_phanloai_num(raw_by_code)
-    if di_num is not None and di_num >= 2 and _mat_vision_below8(raw_by_code):
+    mat_icd_both_blank = _mat_icd_both_blank(raw_by_code)
+    if blank("mat_phanloai") and blank("mat_chuaphathienbatthuong"):
+        fixes["mat_phanloai"] = 1
+        fixes["mat_chuaphathienbatthuong"] = 1
+    elif di_num == 1 and mat_icd_both_blank:
+        fixes["mat_chuaphathienbatthuong"] = 1
+    if di_num == 2 and mat_icd_both_blank:
         fixes["mat_chuaphathienbatthuong"] = None
-        if _mat_icd_both_blank(raw_by_code):
-            fixes["mat_chandoansobo_icd"] = "H52.7"
+        fixes["mat_chandoansobo_icd"] = "H52.7"
     for code in ("mat_chandoansobo_icd", "mat_chandoanxacdinh_icd"):
         if code not in fixes and _is_literal_zero(raw_by_code.get(code)):
             fixes[code] = None
@@ -509,22 +598,31 @@ def compute_data_fixes_for_row(raw_by_code):
     if blank("kskdk_xnm_slhc"):
         fixes["kskdk_xnm_slhc"] = 0
 
-    for tuchoi_c, _check_c, _sobo_c, _xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
-        if (not blank(tuchoi_c)) and val(tuchoi_c) == "1":
-            fixes[phanloai_c] = None
-
+    # Sản khoa/Phụ khoa — quy tắc GỘP CHUNG cả 2 khối (theo file quy tắc Jo gửi 24/09/2026, thay
+    # thế hoàn toàn cách xét riêng từng khối trước đây), chỉ áp dụng khi Nữ (gt đã sửa ở trên):
+    #  - Nếu sankhoa_tuchoikham = 1 HOẶC phukhoa_tuchoikham = 1 → cả sankhoa_phanloai VÀ
+    #    phukhoa_phanloai đều chuyển null (không phân biệt khối nào từ chối).
+    #  - Ngược lại, nếu CẢ HAI *_tuchoikham đều trống VÀ cả 4 ô chẩn đoán (sankhoa +
+    #    phukhoa, sơ bộ + xác định) đều trống → điền sankhoa_chuaphathienbatthuong = 1,
+    #    phukhoa_chuaphathienbatthuong = 1, sankhoa_phanloai = 1, phukhoa_phanloai = 1.
+    #  - Còn lại (đã có dữ liệu ở 1 trong các ô trên) → giữ nguyên, không tự điền gì.
     sankhoa_tuchoi_c, sankhoa_check_c, sankhoa_sobo_c, sankhoa_xacdinh_c, sankhoa_phanloai_c = \
         SPECIALTY_BLOCKS_5FIELD["sankhoa"]
     phukhoa_tuchoi_c, phukhoa_check_c, phukhoa_sobo_c, phukhoa_xacdinh_c, phukhoa_phanloai_c = \
         SPECIALTY_BLOCKS_5FIELD["phukhoa"]
 
     if gt == "2":
-        if (sankhoa_phanloai_c not in fixes and blank(sankhoa_tuchoi_c)
-                and blank(sankhoa_sobo_c) and blank(sankhoa_xacdinh_c)):
+        sankhoa_tuchoi1 = (not blank(sankhoa_tuchoi_c)) and val(sankhoa_tuchoi_c) == "1"
+        phukhoa_tuchoi1 = (not blank(phukhoa_tuchoi_c)) and val(phukhoa_tuchoi_c) == "1"
+        if sankhoa_tuchoi1 or phukhoa_tuchoi1:
+            fixes[sankhoa_phanloai_c] = None
+            fixes[phukhoa_phanloai_c] = None
+        elif (blank(sankhoa_tuchoi_c) and blank(phukhoa_tuchoi_c)
+                and blank(sankhoa_sobo_c) and blank(sankhoa_xacdinh_c)
+                and blank(phukhoa_sobo_c) and blank(phukhoa_xacdinh_c)):
             fixes[sankhoa_check_c] = 1
-            fixes[sankhoa_phanloai_c] = 1
-        if (phukhoa_phanloai_c not in fixes and blank(phukhoa_sobo_c) and blank(phukhoa_xacdinh_c)):
             fixes[phukhoa_check_c] = 1
+            fixes[sankhoa_phanloai_c] = 1
             fixes[phukhoa_phanloai_c] = 1
 
     if blank("nghenghiep_code") or blank("noi_cong_tac"):
@@ -1033,45 +1131,10 @@ def check_doi_tuong_rules(raw_by_code):
     return issues
 
 
-def check_cccd_consistency(raw_by_code):
-    """Suy thông tin từ CCCD 12 số và đối chiếu với ô đã nhập (quy tắc Jo bổ sung):
-    - Ký tự thứ 4: CHẴN (0,2,4,6,8) → Nam (gioi_tinh=1); LẺ (1,3,5,7,9) → Nữ (gioi_tinh=2).
-    - Ký tự thứ 4 cũng cho biết thế kỷ (0-1:19xx, 2-3:20xx, 4-5:21xx...); ký tự 5-6 = 2 số cuối
-      năm sinh. Ghép lại ra năm sinh đầy đủ, đối chiếu với năm của ô ngay_sinh.
-    Ví dụ 079171301583: ký tự 4='1' (lẻ→Nữ, thế kỷ 19xx), ký tự 5-6='71' → năm sinh 1971.
-    Chỉ chạy khi CCCD đủ 12 số (CCCD sai đã được báo ở chỗ khác).
-    """
-    issues = []
-    cccd = clean_ws(raw_by_code.get("dinh_danh_ca_nhan"))
-    if not CCCD_RE.match(cccd):
-        return issues
-
-    d4 = int(cccd[3])          # ký tự thứ 4
-    yy = int(cccd[4:6])        # ký tự 5-6
-
-    # 1) Giới tính
-    gt = clean_ws(raw_by_code.get("gioi_tinh"))
-    if gt in ("1", "2"):
-        expected = "1" if d4 % 2 == 0 else "2"
-        if gt != expected:
-            ten = "Nam" if expected == "1" else "Nữ"
-            issues.append({
-                "code": "gioi_tinh",
-                "level": "Lỗi",
-                "message": f"Giới tính không khớp CCCD: ký tự thứ 4 ('{cccd[3]}') cho biết là {ten}, nhưng ô giới tính đang là '{gt}'",
-            })
-
-    # 2) Năm sinh
-    century = 1900 + (d4 // 2) * 100   # 0,1→1900; 2,3→2000; 4,5→2100; ...
-    year_cccd = century + yy
-    d, err = parse_date_cell(raw_by_code.get("ngay_sinh"))
-    if d is not None and d.year != year_cccd:
-        issues.append({
-            "code": "ngay_sinh",
-            "level": "Lỗi",
-            "message": f"Năm sinh không khớp CCCD: CCCD cho biết năm sinh {year_cccd} (ký tự 4-6 = '{cccd[3:6]}'), nhưng ngày sinh đang là năm {d.year}",
-        })
-    return issues
+# check_cccd_consistency đã được THAY THẾ bằng check_gioitinh_ngaysinh_rules() ở trên (theo file
+# quy tắc Jo gửi 24/09/2026) — giờ đối chiếu CCCD với giới tính/năm sinh không còn chặn Lưu (Lỗi)
+# nữa mà TỰ SỬA trong file tải về + báo Cảnh báo, và có thêm ưu tiên suy giới tính từ họ tên
+# ("Thị"/"Văn") trước khi đối chiếu CCCD. Xem compute_gioitinh_ngaysinh_fixes() ở trên.
 
 
 def check_eye_pairs(raw_by_code):
@@ -1182,7 +1245,7 @@ def validate_workbook(file_bytes):
         gioi_tinh_text = clean_ws(raw_by_code.get("gioi_tinh"))
         cross_issues = (check_specialty_blocks(raw_by_code, gioi_tinh_text)
                         + check_doi_tuong_rules(raw_by_code)
-                        + check_cccd_consistency(raw_by_code)
+                        + check_gioitinh_ngaysinh_rules(raw_by_code)
                         + check_eye_pairs(raw_by_code)
                         + check_mat_rules(raw_by_code))
         for iss in cross_issues:
