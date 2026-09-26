@@ -476,18 +476,15 @@ def compute_data_fixes_for_row(raw_by_code):
         chuyển null.
       - 'loai_kham' (cột ED): trống thì điền = 2.
       - 'kskdk_xnm_slhc' — Số lượng hồng cầu (cột EE): trống thì điền = 0.
-      - gioi_tinh = 2 (Nữ) và 'sankhoa_tuchoikham' (cột CV) = 1 → NULL cả 4 ô còn lại của khối Sản
-        khoa: CW (chuaphathienbatthuong), CX (chandoansobo_icd), CY (chandoanxacdinh_icd), CZ
-        (phanloai) — không còn cảnh báo lỗi phân loại 1-5 cho khối này nữa.
-      - gioi_tinh = 2 (Nữ) và 'sankhoa_tuchoikham' <> 1 và CW, CX, CY đều đang trống → chỉnh CZ
-        (sankhoa_phanloai) = 1 (còn lại giữ nguyên mặc định của file Excel).
-      - gioi_tinh = 2 (Nữ) và 'phukhoa_tuchoikham' (cột DA) = 1 → NULL cả 4 ô còn lại của khối Phụ
-        khoa: DB (chuaphathienbatthuong), DC (chandoansobo_icd), DD (chandoanxacdinh_icd), DE
-        (phanloai) — không còn cảnh báo lỗi phân loại 1-5 cho khối này nữa.
-      - gioi_tinh = 2 (Nữ) và 'phukhoa_tuchoikham' <> 1 và cột DC, DD đều đang trống → chỉnh DB
-        (phukhoa_chuaphathienbatthuong) = 1 và DE (phukhoa_phanloai) = 1 (còn lại giữ nguyên mặc
-        định của file Excel). Hai khối Sản khoa/Phụ khoa được xét ĐỘC LẬP với nhau — khối này từ
-        chối khám không còn ảnh hưởng tới khối kia nữa.
+      - Sản khoa/Phụ khoa (theo file "2sankhoa_tuchoikham.txt" Jo gửi — CHUNG 1 quy tắc cho cả 2
+        khối, xét ĐỘC LẬP TỪNG KHỐI, không khối nào ảnh hưởng khối kia): với mỗi khối (Sản khoa
+        cột CV-CZ, Phụ khoa cột DA-DE) —
+          • '*_tuchoikham' = 1 → NULL cả 4 ô còn lại của ĐÚNG khối đó (chuaphathienbatthuong,
+            chandoansobo_icd, chandoanxacdinh_icd, phanloai) — không còn cảnh báo lỗi phân loại
+            1-5 cho khối này nữa.
+          • '*_tuchoikham' <> 1 và ('*_phanloai' = 1 HOẶC '*_phanloai' đang trống, kể cả trường
+            hợp cả 4 ô đều đang trống) → điền '*_chuaphathienbatthuong' = 1 VÀ '*_phanloai' = 1
+            cho ĐÚNG khối đó. Phân loại đang là 2-5 thì giữ nguyên, không tự điền gì.
       - sdt: phải đủ đúng 10 chữ số — không đúng 10 số (kể cả để trống) thì Cảnh báo và tự điền mặc
         định "090900202" trong file tải về (xem SDT_DEFAULT_VALUE).
       - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac' (cột R) đang trống → điền 'doi_tuong_kham'
@@ -631,43 +628,31 @@ def compute_data_fixes_for_row(raw_by_code):
     if blank("kskdk_xnm_slhc"):
         fixes["kskdk_xnm_slhc"] = 0
 
-    # Sản khoa/Phụ khoa — quy tắc XÉT RIÊNG TỪNG KHỐI (theo file quy tắc mới Jo gửi — thay thế cách
-    # gộp chung cả 2 khối trước đây, vốn lỡ null luôn phanloai của khối KHÔNG từ chối khi chỉ 1
-    # trong 2 khối chọn 'Từ chối khám'), chỉ áp dụng khi Nữ (gt đã sửa ở trên):
-    #  - sankhoa_tuchoikham = 1 → NULL cả 4 ô còn lại của khối Sản khoa (chuaphathienbatthuong,
-    #    chandoansobo_icd, chandoanxacdinh_icd, phanloai) — không cảnh báo lỗi phân loại 1-5 nữa
-    #    (xem 'skip_phanloai_range' ở check_cell()).
-    #  - sankhoa_tuchoikham <> 1 → nếu sankhoa_chuaphathienbatthuong, sankhoa_chandoansobo_icd VÀ
-    #    sankhoa_chandoanxacdinh_icd đều đang trống thì điền sankhoa_phanloai = 1, còn lại (đã có dữ
-    #    liệu ở 1 trong 3 ô đó) giữ nguyên giá trị mặc định của file Excel, không tự điền gì.
-    #  - phukhoa_tuchoikham = 1 → NULL cả 4 ô còn lại của khối Phụ khoa, tương tự Sản khoa ở trên.
-    #  - phukhoa_tuchoikham <> 1 → nếu phukhoa_chandoansobo_icd VÀ phukhoa_chandoanxacdinh_icd đều
-    #    đang trống (không xét ô chuaphathienbatthuong) thì điền phukhoa_chuaphathienbatthuong = 1
-    #    VÀ phukhoa_phanloai = 1, còn lại giữ nguyên giá trị mặc định của file Excel.
-    sankhoa_tuchoi_c, sankhoa_check_c, sankhoa_sobo_c, sankhoa_xacdinh_c, sankhoa_phanloai_c = \
-        SPECIALTY_BLOCKS_5FIELD["sankhoa"]
-    phukhoa_tuchoi_c, phukhoa_check_c, phukhoa_sobo_c, phukhoa_xacdinh_c, phukhoa_phanloai_c = \
-        SPECIALTY_BLOCKS_5FIELD["phukhoa"]
-
-    if gt == "2":
-        sankhoa_tuchoi1 = (not blank(sankhoa_tuchoi_c)) and val(sankhoa_tuchoi_c) == "1"
-        if sankhoa_tuchoi1:
-            fixes[sankhoa_check_c] = None
-            fixes[sankhoa_sobo_c] = None
-            fixes[sankhoa_xacdinh_c] = None
-            fixes[sankhoa_phanloai_c] = None
-        elif blank(sankhoa_check_c) and blank(sankhoa_sobo_c) and blank(sankhoa_xacdinh_c):
-            fixes[sankhoa_phanloai_c] = 1
-
-        phukhoa_tuchoi1 = (not blank(phukhoa_tuchoi_c)) and val(phukhoa_tuchoi_c) == "1"
-        if phukhoa_tuchoi1:
-            fixes[phukhoa_check_c] = None
-            fixes[phukhoa_sobo_c] = None
-            fixes[phukhoa_xacdinh_c] = None
-            fixes[phukhoa_phanloai_c] = None
-        elif blank(phukhoa_sobo_c) and blank(phukhoa_xacdinh_c):
-            fixes[phukhoa_check_c] = 1
-            fixes[phukhoa_phanloai_c] = 1
+    # Sản khoa/Phụ khoa — quy tắc CHUNG cho cả 2 khối (theo file "2sankhoa_tuchoikham.txt" Jo gửi —
+    # thay thế toàn bộ cách xét riêng từng khối trước đây), chỉ áp dụng khi Nữ (gt đã sửa ở trên;
+    # Nam thì cả 5 ô của cả 2 khối đã bị null ở nhánh MALE_EXCLUDED_FIELDS phía trên rồi):
+    #  - *_tuchoikham = 1 → NULL cả 4 ô còn lại của khối đó (chuaphathienbatthuong, chandoansobo_icd,
+    #    chandoanxacdinh_icd, phanloai) — đã hỏi lại Jo và xác nhận null cả 4 ô, không phải 3 — và
+    #    không cảnh báo lỗi phân loại 1-5 nữa (xem 'skip_phanloai_range' ở check_cell()).
+    #  - *_tuchoikham <> 1 và (*_phanloai = 1 HOẶC *_phanloai đang trống) → điền
+    #    *_chuaphathienbatthuong = 1 VÀ *_phanloai = 1 — CHỈ xét theo giá trị phanloai, không xét
+    #    ICD sơ bộ/xác định nữa (khác bản trước). Các giá trị phanloai khác (2-5) thì giữ nguyên,
+    #    không tự điền gì.
+    #  Sankhoa và Phụ khoa dùng chung đúng 1 logic này (trước đây 2 khối xét hơi khác nhau).
+    for tuchoi_c, check_c, sobo_c, xacdinh_c, phanloai_c in (
+        SPECIALTY_BLOCKS_5FIELD["sankhoa"], SPECIALTY_BLOCKS_5FIELD["phukhoa"],
+    ):
+        if gt != "2":
+            continue
+        tuchoi1 = (not blank(tuchoi_c)) and val(tuchoi_c) == "1"
+        if tuchoi1:
+            fixes[check_c] = None
+            fixes[sobo_c] = None
+            fixes[xacdinh_c] = None
+            fixes[phanloai_c] = None
+        elif val(phanloai_c) == "1" or blank(phanloai_c):
+            fixes[check_c] = 1
+            fixes[phanloai_c] = 1
 
     if blank("nghenghiep_code") or blank("noi_cong_tac"):
         fixes["doi_tuong_kham"] = 3
