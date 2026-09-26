@@ -574,7 +574,10 @@ def compute_data_fixes_for_row(raw_by_code):
     # Quy tắc RIÊNG cho khối Mắt (theo file quy tắc Jo gửi 24/09/2026, ĐÃ BỎ điều kiện thị lực —
     # THAY THẾ hoàn toàn cách xử lý theo khuôn 4-ô chung ở dưới, mat_* không nằm trong
     # SPECIALTY_BLOCKS_4FIELD):
-    #  - mat_phanloai (DI) và mat_chuaphathienbatthuong (DF) đều đang trống → điền cả 2 = 1.
+    #  - mat_phanloai (DI) VÀ cả 2 ô chẩn đoán (DG/DH) đều đang trống → điền mat_chuaphathienbatthuong
+    #    = 1 và mat_phanloai = 1 (không cần biết mat_chuaphathienbatthuong đang là gì — kể cả đang
+    #    trống hay có giá trị khác — quy tắc mở rộng theo yêu cầu 26/09/2026, gộp luôn trường hợp cũ
+    #    "cả 4 ô đều trống").
     #  - mat_phanloai (DI) = 1 và cả 2 ô chẩn đoán (DG/DH) đang trống → điền DF = 1.
     #  - mat_phanloai (DI) = 2 và cả 2 ô chẩn đoán (DG/DH) đang trống → xoá trắng DF (không thể vừa
     #    "bất thường" vừa "chưa phát hiện bất thường"), và điền DG = "H52.7".
@@ -583,7 +586,7 @@ def compute_data_fixes_for_row(raw_by_code):
     #  - DG/DH = 0 (giá trị rác) → chuyển null, giống quy tắc chung áp dụng cho 12 khối kia.
     di_num = _mat_phanloai_num(raw_by_code)
     mat_icd_both_blank = _mat_icd_both_blank(raw_by_code)
-    if blank("mat_phanloai") and blank("mat_chuaphathienbatthuong"):
+    if blank("mat_phanloai") and mat_icd_both_blank:
         fixes["mat_phanloai"] = 1
         fixes["mat_chuaphathienbatthuong"] = 1
     elif di_num == 1 and mat_icd_both_blank:
