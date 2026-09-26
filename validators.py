@@ -395,6 +395,23 @@ def compute_gioitinh_ngaysinh_fixes(raw_by_code):
     original_gt = val("gioi_tinh")
     effective_gt = original_gt
 
+    # 0) Giới tính nhập bằng chữ ("Nam"/"Nữ") thay vì mã số 1/2 -> tự quy đổi (yêu cầu mới của Jo).
+    gt_text_norm = norm_key(original_gt)
+    if gt_text_norm == "nam" and effective_gt != "1":
+        fixes["gioi_tinh"] = 1
+        warnings.append((
+            "gioi_tinh",
+            f"Giới tính đang nhập chữ '{original_gt}' — tự quy đổi thành mã 1 (Nam)",
+        ))
+        effective_gt = "1"
+    elif gt_text_norm == "nữ" and effective_gt != "2":
+        fixes["gioi_tinh"] = 2
+        warnings.append((
+            "gioi_tinh",
+            f"Giới tính đang nhập chữ '{original_gt}' — tự quy đổi thành mã 2 (Nữ)",
+        ))
+        effective_gt = "2"
+
     # 1) Họ tên có chữ đệm "Thị" -> Nữ (2); có chữ đệm "Văn" -> Nam (1).
     ten_tokens = set(norm_key(ho_ten).split(" "))
     if "thị" in ten_tokens and effective_gt != "2":
@@ -1052,6 +1069,13 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
                 "level": "Cảnh báo",
                 "message": f"'{text}' phải đủ 10 chữ số — hệ thống sẽ tự điền mặc định '{SDT_DEFAULT_VALUE}' trong file tải về",
             })
+        return issues
+
+    # ---- Giới tính nhập bằng chữ ("Nam"/"Nữ") thay vì mã số ----
+    # Quy tắc mới của Jo: nhập chữ 'Nam' -> tự quy đổi thành 1, nhập chữ 'Nữ' -> tự quy đổi thành 2
+    # (xem compute_gioitinh_ngaysinh_fixes()). Không báo Lỗi ở đây — để cross-check phía dưới tự
+    # sửa và báo Cảnh báo riêng, giống cách xử lý các trường hợp tự sửa gioi_tinh khác (Thị/Văn, CCCD).
+    if code == "gioi_tinh" and norm_key(text) in ("nam", "nữ"):
         return issues
 
     # ---- chọn 1 trong danh sách cố định ----
