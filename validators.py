@@ -498,6 +498,11 @@ def compute_data_fixes_for_row(raw_by_code):
       - 1 khối chuyên khoa (4 hoặc 5 ô, KHÔNG gồm Mắt) có '*_chandoansobo_icd' hoặc
         '*_chandoanxacdinh_icd' khác 0 (có giá trị ICD thật) → ô '*_chuaphathienbatthuong' (ô check
         "Chưa phát hiện bất thường") của đúng khối đó chuyển null — tự xoá khi đang mâu thuẫn dữ liệu.
+      - 12 khối chuyên khoa 4-ô (noikhoa, hohap, tieuhoa, thantietnieu, noitiet, coxuongkhop,
+        thankinh, tamthan, ngoaikhoa, dalieu, tmh, rhm — KHÔNG gồm Mắt/Sản khoa/Phụ khoa): nếu ô
+        chuaphathienbatthuong đang TRỐNG HOẶC = 0, và 3 ô còn lại (chandoansobo_icd,
+        chandoanxacdinh_icd, phanloai) đều đang trống → tự điền chuaphathienbatthuong = 1 VÀ
+        phanloai = 1 cho đúng khối đó.
       - Bất kỳ ô '*_chandoanxacdinh_icd' nào (12 khối chuyên khoa + Sản khoa/Phụ khoa, KHÔNG gồm
         Mắt) có giá trị KHÁC 0 và KHÁC 1 (tức có mã ICD thật, không phải giá trị rác/placeholder) →
         điền cố định 'danh_muc_de_nghi' (cột FP, "Kết Luận") = "Đã có bệnh mạn tính, tiếp tục điều
@@ -591,6 +596,17 @@ def compute_data_fixes_for_row(raw_by_code):
             continue  # đã bị xoá trắng ở quy tắc giới tính (Nam) — khỏi ghi đè lại
         if has_icd_value(sobo_c) or has_icd_value(xacdinh_c):
             fixes[check_c] = None
+
+    # Quy tắc mới (Jo bổ sung, file "1_yeu_cau.txt"): với 12 khối chuyên khoa 4-ô (KHÔNG gồm Mắt/
+    # Sản khoa/Phụ khoa) — nếu ô chuaphathienbatthuong đang TRỐNG HOẶC = 0, VÀ 3 ô còn lại
+    # (chandoansobo_icd, chandoanxacdinh_icd, phanloai) đều đang trống, thì tự điền
+    # chuaphathienbatthuong = 1 VÀ phanloai = 1 cho đúng khối đó (áp dụng cho cả 12 khối như nhau,
+    # không phân biệt giới tính).
+    for check_c, sobo_c, xacdinh_c, phanloai_c in SPECIALTY_BLOCKS_4FIELD.values():
+        check_blank_or_zero = blank(check_c) or _is_literal_zero(raw_by_code.get(check_c))
+        if check_blank_or_zero and blank(sobo_c) and blank(xacdinh_c) and blank(phanloai_c):
+            fixes[check_c] = 1
+            fixes[phanloai_c] = 1
 
     # Quy tắc mới (Jo bổ sung): bất kỳ ô '*_chandoanxacdinh_icd' nào (13 khối + Sản khoa/Phụ khoa)
     # có giá trị KHÁC 0 VÀ KHÁC 1 (mã ICD thật, không phải 0/1 rác) → ép cứng Kết luận
