@@ -476,6 +476,12 @@ def compute_data_fixes_for_row(raw_by_code):
         chuyển null.
       - 'loai_kham' (cột ED): trống thì điền = 2.
       - 'kskdk_xnm_slhc' — Số lượng hồng cầu (cột EE): trống thì điền = 0.
+      - 4 chỉ số sinh tồn — TRỐNG thì tự điền mặc định; đã có số mà vượt quá xa khoảng an toàn thì
+        cũng tự điền về mặc định (khác VITAL_SIGN_RANGES — đó chỉ cảnh báo nhẹ, không tự sửa):
+        'nhiptho' trống → = 20, ngoài khoảng (>25 hoặc <16) → = 20; 'mach' trống → = 80, ngoài
+        khoảng (<60 hoặc >110) → = 80; 'huyetaptamthu' trống → = 110, ngoài khoảng (<90) → = 110;
+        'huyetaptamtruong' trống → = 70, ngoài khoảng (<50 hoặc >110) → = 80 (2 giá trị mặc định
+        khác nhau cho ô này, đúng theo yêu cầu của Jo).
       - Sản khoa/Phụ khoa (theo file "2sankhoa_tuchoikham.txt" Jo gửi — CHUNG 1 quy tắc cho cả 2
         khối, xét ĐỘC LẬP TỪNG KHỐI, không khối nào ảnh hưởng khối kia): với mỗi khối (Sản khoa
         cột CV-CZ, Phụ khoa cột DA-DE) —
@@ -492,9 +498,12 @@ def compute_data_fixes_for_row(raw_by_code):
       - 'doi_tuong_kham' (cột C) = 3 (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên) →
         điền cố định 'hinh_thuc_chi_tra_khamsk' (cột V) = "Ngân sách thành phố hỗ trợ" và
         'hinh_thuc_chi_tra_khamsk_chi_tiet' (cột W) = "Khám Theo Hợp Đồng".
-      - 1 khối chuyên khoa (4 hoặc 5 ô, KHÔNG gồm Mắt) có '*_chandoansobo_icd' hoặc
-        '*_chandoanxacdinh_icd' khác 0 (có giá trị ICD thật) → ô '*_chuaphathienbatthuong' (ô check
-        "Chưa phát hiện bất thường") của đúng khối đó chuyển null — tự xoá khi đang mâu thuẫn dữ liệu.
+      - ĐỦ 15 khối (12 khối 4-ô + Sản khoa + Phụ khoa + Mắt — quy tắc chạy SAU CÙNG, thắng mọi quy
+        tắc khác nếu mâu thuẫn): '*_chandoansobo_icd' hoặc '*_chandoanxacdinh_icd' của 1 khối có
+        giá trị thật (khác 0, khác trống) → '*_chuaphathienbatthuong' của đúng khối đó chuyển null,
+        '*_phanloai' của đúng khối đó GIỮ NGUYÊN (không tự điền/xoá gì), và riêng Sản khoa/Phụ khoa
+        thì '*_tuchoikham' của đúng khối đó cũng chuyển null (coi như không còn từ chối khám nữa vì
+        đã có chẩn đoán thật).
       - 12 khối chuyên khoa 4-ô (noikhoa, hohap, tieuhoa, thantietnieu, noitiet, coxuongkhop,
         thankinh, tamthan, ngoaikhoa, dalieu, tmh, rhm — KHÔNG gồm Mắt/Sản khoa/Phụ khoa): nếu ô
         chuaphathienbatthuong đang TRỐNG HOẶC = 0, và 3 ô còn lại (chandoansobo_icd,
@@ -628,16 +637,51 @@ def compute_data_fixes_for_row(raw_by_code):
     if blank("kskdk_xnm_slhc"):
         fixes["kskdk_xnm_slhc"] = 0
 
+    # Quy tắc mới (Jo bổ sung): 4 chỉ số sinh tồn (nhiptho, mach, huyetaptamthu, huyetaptamtruong) —
+    # nếu đang để TRỐNG thì tự điền giá trị mặc định; nếu đã có số mà vượt quá xa khoảng an toàn thì
+    # tự điền về giá trị mặc định (2 giá trị mặc định này không phải lúc nào cũng giống nhau, lấy
+    # đúng theo yêu cầu của Jo). Khác với VITAL_SIGN_RANGES (chỉ dùng để cảnh báo nhẹ trên bảng
+    # kiểm tra, không tự sửa).
+    if blank("nhiptho"):
+        fixes["nhiptho"] = 20
+    else:
+        nhiptho_n = to_number(raw_by_code.get("nhiptho"))
+        if nhiptho_n is not None and (nhiptho_n > 25 or nhiptho_n < 16):
+            fixes["nhiptho"] = 20
+
+    if blank("mach"):
+        fixes["mach"] = 80
+    else:
+        mach_n = to_number(raw_by_code.get("mach"))
+        if mach_n is not None and (mach_n < 60 or mach_n > 110):
+            fixes["mach"] = 80
+
+    if blank("huyetaptamthu"):
+        fixes["huyetaptamthu"] = 110
+    else:
+        huyetaptamthu_n = to_number(raw_by_code.get("huyetaptamthu"))
+        if huyetaptamthu_n is not None and huyetaptamthu_n < 90:
+            fixes["huyetaptamthu"] = 110
+
+    if blank("huyetaptamtruong"):
+        fixes["huyetaptamtruong"] = 70
+    else:
+        huyetaptamtruong_n = to_number(raw_by_code.get("huyetaptamtruong"))
+        if huyetaptamtruong_n is not None and (huyetaptamtruong_n < 50 or huyetaptamtruong_n > 110):
+            fixes["huyetaptamtruong"] = 80
+
     # Sản khoa/Phụ khoa — quy tắc CHUNG cho cả 2 khối (theo file "2sankhoa_tuchoikham.txt" Jo gửi —
     # thay thế toàn bộ cách xét riêng từng khối trước đây), chỉ áp dụng khi Nữ (gt đã sửa ở trên;
     # Nam thì cả 5 ô của cả 2 khối đã bị null ở nhánh MALE_EXCLUDED_FIELDS phía trên rồi):
     #  - *_tuchoikham = 1 → NULL cả 4 ô còn lại của khối đó (chuaphathienbatthuong, chandoansobo_icd,
     #    chandoanxacdinh_icd, phanloai) — đã hỏi lại Jo và xác nhận null cả 4 ô, không phải 3 — và
     #    không cảnh báo lỗi phân loại 1-5 nữa (xem 'skip_phanloai_range' ở check_cell()).
-    #  - *_tuchoikham <> 1 và (*_phanloai = 1 HOẶC *_phanloai đang trống) → điền
-    #    *_chuaphathienbatthuong = 1 VÀ *_phanloai = 1 — CHỈ xét theo giá trị phanloai, không xét
-    #    ICD sơ bộ/xác định nữa (khác bản trước). Các giá trị phanloai khác (2-5) thì giữ nguyên,
-    #    không tự điền gì.
+    #  - *_tuchoikham <> 1 và *_chandoansobo_icd, *_chandoanxacdinh_icd đều đang trống, và
+    #    (*_phanloai = 1 HOẶC *_phanloai đang trống — kể cả trường hợp cả 4 ô đều trống) → điền
+    #    *_chuaphathienbatthuong = 1 VÀ *_phanloai = 1. Nếu sobo/xacdinh có mã ICD thật thì KHÔNG
+    #    tự điền (để tránh mâu thuẫn dữ liệu — trường hợp này đã có cảnh báo riêng "xem lại Phân
+    #    loại"/"xem lại phân loại" ở check_specialty_blocks()). Phân loại đang là 2-5 thì giữ
+    #    nguyên, không tự điền gì.
     #  Sankhoa và Phụ khoa dùng chung đúng 1 logic này (trước đây 2 khối xét hơi khác nhau).
     for tuchoi_c, check_c, sobo_c, xacdinh_c, phanloai_c in (
         SPECIALTY_BLOCKS_5FIELD["sankhoa"], SPECIALTY_BLOCKS_5FIELD["phukhoa"],
@@ -650,9 +694,36 @@ def compute_data_fixes_for_row(raw_by_code):
             fixes[sobo_c] = None
             fixes[xacdinh_c] = None
             fixes[phanloai_c] = None
-        elif val(phanloai_c) == "1" or blank(phanloai_c):
+        elif blank(sobo_c) and blank(xacdinh_c) and (val(phanloai_c) == "1" or blank(phanloai_c)):
             fixes[check_c] = 1
             fixes[phanloai_c] = 1
+
+    # Quy tắc mới (Jo bổ sung, file "tan 12 khoi.txt" — áp dụng cho ĐỦ 15 khối: 12 khối 4-ô + Sản
+    # khoa + Phụ khoa + Mắt): nếu '*_chandoansobo_icd' HOẶC '*_chandoanxacdinh_icd' của 1 khối có
+    # giá trị thật (khác 0, khác trống) thì '*_phanloai' của đúng khối đó GIỮ NGUYÊN (không tự điền
+    # hay xoá gì — bỏ mọi fix đã lỡ đặt cho nó ở các bước trên), và '*_chuaphathienbatthuong' của
+    # đúng khối đó = null. Chạy SAU CÙNG (sau cả khối Mắt và Sản khoa/Phụ khoa ở trên) nên luôn
+    # thắng nếu có mâu thuẫn với quy tắc khác (vd: '*_tuchoikham' = 1 nhưng vẫn lỡ có ICD thật).
+    def has_icd_value_final(code):
+        return (not blank(code)) and not _is_literal_zero(raw_by_code.get(code))
+
+    all_15_blocks = (
+        [(c, s, x, p) for c, s, x, p in SPECIALTY_BLOCKS_4FIELD.values()]
+        + [("mat_chuaphathienbatthuong", "mat_chandoansobo_icd", "mat_chandoanxacdinh_icd", "mat_phanloai")]
+        + [(c, s, x, p) for _t, c, s, x, p in SPECIALTY_BLOCKS_5FIELD.values()]
+    )
+    for check_c, sobo_c, xacdinh_c, phanloai_c in all_15_blocks:
+        if has_icd_value_final(sobo_c) or has_icd_value_final(xacdinh_c):
+            fixes[check_c] = None
+            fixes.pop(sobo_c, None)       # giữ nguyên — không để bước nào khác lỡ xoá mã ICD thật
+            fixes.pop(xacdinh_c, None)
+            fixes.pop(phanloai_c, None)   # giữ nguyên phân loại — không tự điền hay xoá
+
+    # '*_tuchoikham' = null cho đúng 2 khối Sản khoa/Phụ khoa khi khối đó có ICD thật (mâu thuẫn với
+    # 'Từ chối khám' — coi như không còn từ chối khám nữa vì đã có chẩn đoán).
+    for tuchoi_c, _check_c, sobo_c, xacdinh_c, _phanloai_c in SPECIALTY_BLOCKS_5FIELD.values():
+        if has_icd_value_final(sobo_c) or has_icd_value_final(xacdinh_c):
+            fixes[tuchoi_c] = None
 
     if blank("nghenghiep_code") or blank("noi_cong_tac"):
         fixes["doi_tuong_kham"] = 3
@@ -1246,6 +1317,26 @@ def check_eye_pairs(raw_by_code):
     return issues
 
 
+def check_vital_diff(raw_by_code):
+    """Huyết áp tâm thu - huyết áp tâm trương (quy tắc Jo bổ sung):
+    Nếu (huyetaptamthu - huyetaptamtruong) < 20 thì bất thường — tô màu đỏ (Lỗi)
+    cả 2 ô tương ứng (huyetaptamthu và huyetaptamtruong).
+    Chỉ kiểm tra khi cả 2 giá trị đều đọc được thành số; nếu 1 trong 2 ô trống/không
+    đọc được thì bỏ qua (không báo lỗi ở đây — việc trống ô đã có quy tắc auto-fix riêng).
+    """
+    issues = []
+    thu_n = to_number(raw_by_code.get("huyetaptamthu"))
+    truong_n = to_number(raw_by_code.get("huyetaptamtruong"))
+    if thu_n is not None and truong_n is not None and (thu_n - truong_n) < 20:
+        msg = (
+            f"Hiệu số huyết áp tâm thu - tâm trương ({thu_n:g} - {truong_n:g} = "
+            f"{thu_n - truong_n:g}) nhỏ hơn 20 — bất thường, cần xem lại"
+        )
+        issues.append({"code": "huyetaptamthu", "level": "Lỗi", "message": msg})
+        issues.append({"code": "huyetaptamtruong", "level": "Lỗi", "message": msg})
+    return issues
+
+
 # ============================================================
 # KIỂM TRA TOÀN BỘ FILE
 # ============================================================
@@ -1331,7 +1422,8 @@ def validate_workbook(file_bytes):
                         + check_doi_tuong_rules(raw_by_code)
                         + check_gioitinh_ngaysinh_rules(raw_by_code)
                         + check_eye_pairs(raw_by_code)
-                        + check_mat_rules(raw_by_code))
+                        + check_mat_rules(raw_by_code)
+                        + check_vital_diff(raw_by_code))
         for iss in cross_issues:
             cdef = col_defs_by_code.get(iss["code"])
             issues.append({
