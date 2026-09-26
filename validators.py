@@ -1465,6 +1465,9 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
     (1) điền loại thể lực đã tính vào cột 'phanloai' (Phân Loại thể lực);
     (2) điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') và ô 'de_nghi' khi đang để trống;
     (3) áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...);
+    (3b) ép cột 'ngay_kham'/'ngay_sinh' thành CHỮ (Text) đúng khuôn dd/mm/yyyy — Excel hay tự hiển
+    thị ngày theo định dạng khác (vd yyyy-mm-dd) tuỳ locale máy dù giá trị bên trong vẫn là ngày
+    hợp lệ, nên ép hẳn về chuỗi text để hiển thị nhất quán, đúng chuẩn Jo cần cho Tampermonkey;
     (4) canh giữa dữ liệu trong toàn bộ vùng dữ liệu;
     (5) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
     File kết quả KHÔNG bị khoá/bảo vệ — vẫn filter, xoá, copy, paste bình thường.
@@ -1506,9 +1509,27 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
             if col:
                 ws.cell(row=r, column=col).value = new_val
 
-    # (4) Canh giữa dữ liệu trong toàn bộ vùng dữ liệu đã map được mã field
     key_cols = [c for code, c in col_map.items() if code in ("ho_ten", "dinh_danh_ca_nhan")]
     last_row = find_last_data_row(ws, key_cols, data_start_row) if key_cols else ws.max_row
+
+    # (3b) Ép 'ngay_kham'/'ngay_sinh' thành CHỮ (Text) đúng khuôn dd/mm/yyyy — chạy SAU bước (3) để
+    # áp lại cả cho ngay_sinh vừa được tự sửa theo CCCD ở trên (giá trị lúc đó là date object, chưa
+    # ép định dạng). Excel hay tự hiển thị ngày theo định dạng khác (vd yyyy-mm-dd) tuỳ locale máy
+    # dù giá trị bên trong vẫn là ngày hợp lệ — ép hẳn về chuỗi text để hiển thị nhất quán. Ô nào
+    # không đọc được thành ngày hợp lệ thì giữ nguyên, không đụng vào (đã có 'Lỗi' báo riêng ở
+    # check_cell()).
+    for date_code in DATE_FIELDS:  # ngay_kham, ngay_sinh
+        date_col = col_map.get(date_code)
+        if not date_col:
+            continue
+        for r in range(data_start_row, last_row + 1):
+            cell = ws.cell(row=r, column=date_col)
+            d, _err = parse_date_cell(cell.value)
+            if d is not None:
+                cell.value = d.strftime("%d/%m/%Y")
+                cell.number_format = "@"  # Text — Excel không tự đổi hiển thị theo locale nữa
+
+    # (4) Canh giữa dữ liệu trong toàn bộ vùng dữ liệu đã map được mã field
     last_col = max(col_map.values()) if col_map else ws.max_column
     center_align = Alignment(horizontal="center", vertical="center")
     for r in range(data_start_row, last_row + 1):
