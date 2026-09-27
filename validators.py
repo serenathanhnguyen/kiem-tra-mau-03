@@ -104,7 +104,7 @@ PHONE_RE = re.compile(r"^0\d{9,10}$")
 # file tải về (giá trị lấy ĐÚNG NGUYÊN VĂN theo yêu cầu của Jo, kể cả khi bản thân nó cũng không
 # đủ 10 số).
 SDT_10_RE = re.compile(r"^\d{10}$")
-SDT_DEFAULT_VALUE = "090900202"
+SDT_DEFAULT_VALUE = "0909002002"
 
 NBSP_CHARS = [
     "\xa0", "​", "﻿", " ", " ",   # NBSP, zero-width space, BOM, figure space, narrow NBSP
@@ -509,7 +509,7 @@ def compute_data_fixes_for_row(raw_by_code):
             hợp cả 4 ô đều đang trống) → điền '*_chuaphathienbatthuong' = 1 VÀ '*_phanloai' = 1
             cho ĐÚNG khối đó. Phân loại đang là 2-5 thì giữ nguyên, không tự điền gì.
       - sdt: phải đủ đúng 10 chữ số — không đúng 10 số (kể cả để trống) thì Cảnh báo và tự điền mặc
-        định "090900202" trong file tải về (xem SDT_DEFAULT_VALUE).
+        định "0909002002" trong file tải về (xem SDT_DEFAULT_VALUE).
       - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac' (cột R) đang trống → điền 'doi_tuong_kham'
         (cột C) = 3.
       - 'doi_tuong_kham' (cột C) = 3 (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên) →
