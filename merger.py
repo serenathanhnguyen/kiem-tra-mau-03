@@ -9,10 +9,15 @@ trắng ẩn, tìm dòng dữ liệu cuối...) từ validators.py — để kh�
 1 file nguồn có cột lệch vị trí đôi chút so với file nền.
 """
 import os
+import re
+from copy import copy
 from io import BytesIO
 
 import openpyxl
 from openpyxl.comments import Comment
+from openpyxl.formula import Tokenizer
+from openpyxl.utils import get_column_letter, column_index_from_string
+from openpyxl.worksheet.cell_range import CellRange, MultiCellRange
 
 from validators import (
     SHEET_MAIN,
@@ -23,7 +28,135 @@ from validators import (
     is_blank,
     find_last_data_row,
     FILL_WARN,
+    format_medinet_columns,
+    is_type_annotation_row,
 )
+
+NEW_FIELDS = (
+    ("ma_phieu", "ngay_kham", "Mã phiếu", None),
+    ("tai_noithuong_tt", "loai_kham", "Kết quả khám thính lực", "Tai trái (Nói thường)"),
+    ("tai_noithuong_tp", "loai_kham", None, "Tai phải (Nói Thường)"),
+    ("tai_noitham_tt", "loai_kham", None, "Tai trái (Nói thầm)"),
+    ("tai_noitham_tp", "loai_kham", None, "Tai phải (Nói thầm)"),
+)
+
+
+def _shift_ref(text, idx, context_sheet):
+    """Dịch địa chỉ khi chèn cột; không dịch tham chiếu sheet danh mục hoặc chuỗi literal."""
+    if "!" in text:
+        prefix, addr = text.rsplit("!", 1)
+        if prefix.strip("'").replace("''", "'") != SHEET_MAIN:
+            return text
+        lead = prefix + "!"
+    else:
+        if context_sheet != SHEET_MAIN:
+            return text
+        lead, addr = "", text
+    if not re.fullmatch(r"\$?[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|\$?[A-Z]{1,3}:\$?[A-Z]{1,3}", addr):
+        return text
+    def repl(m):
+        col = column_index_from_string(m.group(2))
+        return m.group(1) + get_column_letter(col + (col >= idx))
+    return lead + re.sub(r"(\$?)([A-Z]{1,3})", repl, addr)
+
+
+def _shift_formula(formula, idx, context_sheet):
+    if not formula or not isinstance(formula, str):
+        return formula
+    has_equal = formula.startswith("=")
+    tokens = Tokenizer(formula if has_equal else "=" + formula).items
+    result = "".join(_shift_ref(t.value, idx, context_sheet)
+                     if t.type == "OPERAND" and t.subtype == "RANGE" else t.value for t in tokens)
+    return ("=" if has_equal else "") + result
+
+
+def _shift_range(ref, idx):
+    r = CellRange(str(ref))
+    if r.min_col >= idx:
+        r.shift(col_shift=1)
+    elif r.max_col >= idx:
+        r.max_col += 1
+    return str(r)
+
+
+def _insert_template_column(wb, ws, idx):
+    """openpyxl không tự dịch công thức/merge/validation khi insert_cols, nên cập nhật rõ ràng."""
+    merged = [str(r) for r in ws.merged_cells.ranges]
+    for ref in merged:
+        ws.unmerge_cells(ref)
+    dims = [(key, copy(dim)) for key, dim in ws.column_dimensions.items()]
+    ws.insert_cols(idx)
+    ws.column_dimensions.clear()
+    for key, dim in dims:
+        lo = dim.min or column_index_from_string(key)
+        hi = dim.max or lo
+        dim.min = lo + (lo >= idx)
+        dim.max = hi + (hi >= idx)
+        dim.index = get_column_letter(dim.min)
+        ws.column_dimensions[dim.index] = dim
+    for ref in merged:
+        ws.merge_cells(_shift_range(ref, idx))
+    for sheet in wb.worksheets:
+        for row in sheet:
+            for cell in row:
+                if cell.data_type == "f":
+                    cell.value = _shift_formula(cell.value, idx, sheet.title)
+        for dv in sheet.data_validations.dataValidation:
+            if sheet == ws:
+                dv.sqref = MultiCellRange(" ".join(_shift_range(r, idx) for r in dv.sqref.ranges))
+            dv.formula1 = _shift_formula(dv.formula1, idx, sheet.title)
+            dv.formula2 = _shift_formula(dv.formula2, idx, sheet.title)
+    for dn in wb.defined_names.values():
+        dn.attr_text = _shift_formula(dn.attr_text, idx, None)
+    if ws.auto_filter.ref:
+        ws.auto_filter.ref = _shift_range(ws.auto_filter.ref, idx)
+        for fc in ws.auto_filter.filterColumn:
+            if fc.colId + CellRange(ws.auto_filter.ref).min_col >= idx:
+                fc.colId += 1
+    for table in ws.tables.values():
+        # Không tự mở rộng Excel Table khi thay đổi schema: tránh tạo header/column metadata lệch.
+        if CellRange(table.ref).min_col < idx <= CellRange(table.ref).max_col:
+            raise ValueError("File nền có Excel Table tại vị trí cần thêm cột; hãy dùng mẫu Medinet thường.")
+        table.ref = _shift_range(table.ref, idx)
+
+
+def ensure_new_fields(wb, ws, code_row):
+    added = []
+    for i, (code, anchor, label, sublabel) in enumerate(NEW_FIELDS):
+        cmap = _build_code_col_map(ws, code_row)
+        if code in cmap:
+            continue
+        following = [x[0] for x in NEW_FIELDS[i + 1:] if x[1] == anchor and x[0] in cmap]
+        anchor_code = following[0] if following else anchor
+        if anchor_code not in cmap:
+            raise ValueError(f"Không có keyword '{anchor_code}' để xác định vị trí cột '{code}'.")
+        idx = cmap[anchor_code]
+        _insert_template_column(wb, ws, idx)
+        for r in range(1, ws.max_row + 1):
+            ws.cell(r, idx)._style = copy(ws.cell(r, idx + 1)._style)
+        ws.cell(code_row, idx).value = code
+        if code_row >= 3:
+            ws.cell(code_row - 2, idx).value = label
+            ws.cell(code_row - 1, idx).value = sublabel
+        if code == "ma_phieu":
+            if code_row >= 4:
+                ws.cell(code_row - 3, idx).value = (
+                    "Chỉ nhập mã phiếu với trường hợp cập nhật\n"
+                    "Nhập mã phiếu để xác định phiếu cần cập nhật.\n"
+                    "Không nhập mã phiếu, lấy phiếu chưa xóa có ngày khám mới nhất để cập nhật"
+                )
+            if code_row >= 3:
+                ws.merge_cells(start_row=code_row-2, end_row=code_row-1, start_column=idx, end_column=idx)
+        added.append(code)
+    cmap = _build_code_col_map(ws, code_row)
+    hearing = [cmap[x[0]] for x in NEW_FIELDS[1:]]
+    if added and code_row >= 3 and hearing == list(range(hearing[0], hearing[0] + 4)):
+        for ref in list(ws.merged_cells.ranges):
+            if ref.min_row == ref.max_row == code_row-2 and ref.min_col >= hearing[0] and ref.max_col <= hearing[-1]:
+                ws.unmerge_cells(str(ref))
+        ws.cell(code_row-2, hearing[0]).value = "Kết quả khám thính lực"
+        ws.merge_cells(start_row=code_row-2, end_row=code_row-2, start_column=hearing[0], end_column=hearing[-1])
+    return added
 
 # Thiếu 1 trong các mã "mỏ neo" này thì coi file KHÔNG đúng cấu trúc Mẫu 03 (ví dụ lỡ tải nhầm
 # file Mẫu 01/02/04) — dừng hẳn file đó, không đoán mò để tránh ghép sai dữ liệu.
@@ -60,6 +193,8 @@ def read_source_file(file_bytes, filename, unit_label):
 
     rows = []
     for r in range(data_start_row, last_row + 1):
+        if is_type_annotation_row(ws, r, col_map):
+            continue
         if all(is_blank(ws.cell(row=r, column=c).value) for c in key_cols):
             continue  # dòng trống xen giữa — bỏ qua, không tính là 1 bệnh nhân
         values = {code: ws.cell(row=r, column=c).value for code, c in col_map.items()}
@@ -106,6 +241,8 @@ def merge_mau03_files(sources):
 
     wb = openpyxl.load_workbook(BytesIO(base["file_bytes"]))  # không data_only — giữ định dạng để lưu lại
     ws = wb[SHEET_MAIN]
+    added_fields = ensure_new_fields(wb, ws, base["code_row"])
+    base_col_map = _build_code_col_map(ws, base["code_row"])
 
     # Tắt khoá bảo vệ (Protect Sheet) mang theo từ file nền — cùng lỗi và cùng cách vá như
     # annotate_workbook() trong validators.py: không tắt thì Excel tự ẩn/xám bớt nút Home/Filter
@@ -144,7 +281,10 @@ def merge_mau03_files(sources):
         r = base_data_start_row + idx
         ws.cell(row=r, column=1).value = idx + 1  # STT
         for code, col in base_col_map.items():
-            ws.cell(row=r, column=col).value = values.get(code)
+            cell = ws.cell(row=r, column=col)
+            cell.value = values.get(code)
+            if isinstance(cell.value, str):
+                cell.data_type = "s"
         if cccd:
             cccd_positions.setdefault(cccd, []).append((r, unit_label, ho_ten))
 
@@ -179,10 +319,12 @@ def merge_mau03_files(sources):
     for idx, (unit_label, filename, ho_ten, cccd, values) in enumerate(all_rows):
         src_ws.append([idx + 1, ho_ten, cccd, unit_label, filename, "Có" if cccd in dup_cccds else ""])
 
+    format_medinet_columns(wb, ws, base["code_row"], base_data_start_row)
     out = BytesIO()
     wb.save(out)
 
     summary = {
+        "added_fields": added_fields,
         "total_rows": len(all_rows),
         "per_file": [(s["filename"], s["unit_label"], len(s["rows"])) for s in sources],
         "duplicates": duplicates,
