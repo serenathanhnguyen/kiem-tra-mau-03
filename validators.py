@@ -936,6 +936,31 @@ def format_medinet_columns(wb, ws, code_row, data_start_row):
             for c in col_map.values():
                 if ws.cell(r, c).data_type != "f":
                     ws.cell(r, c).value = None
+    # Mặc định theo vị trí cột của mẫu hiện tại, chỉ trên dòng có dữ liệu.
+    # EE–EH luôn nhận giá trị yêu cầu; AW chỉ bổ sung khi null/trống.
+    default_columns = {135: "5", 136: "5", 137: "0,5", 138: "0,5"}
+    target_columns = {49, *default_columns}
+    existing_max_col = ws.max_column
+    for r in range(max(5, data_start_row), ws.max_row + 1):
+        if is_type_annotation_row(ws, r, col_map):
+            continue
+        # Không dùng chính các ô mặc định để xác định dòng có dữ liệu.
+        if not any(
+            not is_blank(ws.cell(r, c).value)
+            for c in range(1, existing_max_col + 1)
+            if c not in target_columns
+        ):
+            continue
+        aw = ws.cell(r, 49)
+        if is_blank(aw.value) or (
+            isinstance(aw.value, str) and clean_ws(aw.value).lower() == "null"
+        ):
+            aw.value = "Không"
+            aw.data_type = "s"
+        for c, value in default_columns.items():
+            cell = ws.cell(r, c)
+            cell.value = value
+            cell.data_type = "s"
     code_by_col = {c: code for code, c in col_map.items()}
     for c in range(1, ws.max_column + 1):
         code = code_by_col.get(c)
