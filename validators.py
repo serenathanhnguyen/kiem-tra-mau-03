@@ -929,15 +929,17 @@ def is_type_annotation_row(ws, row, col_map):
 
 
 def format_medinet_columns(wb, ws, code_row, data_start_row):
-    """Ngày sinh là Date thực; các keyword còn lại là Text thực. Không sửa công thức phụ."""
+    """Tất cả cột dữ liệu là Text; ngày thành chuỗi dd/mm/yyyy. Giữ công thức phụ."""
     col_map = _build_code_col_map(ws, code_row)
     for r in range(data_start_row, ws.max_row + 1):
         if is_type_annotation_row(ws, r, col_map):
             for c in col_map.values():
                 if ws.cell(r, c).data_type != "f":
                     ws.cell(r, c).value = None
-    for code, c in col_map.items():
-        fmt = "dd/mm/yyyy" if code == "ngay_sinh" else "@"
+    code_by_col = {c: code for code, c in col_map.items()}
+    for c in range(1, ws.max_column + 1):
+        code = code_by_col.get(c)
+        fmt = "@"
         ws.column_dimensions[get_column_letter(c)].number_format = fmt
         for r in range(data_start_row, ws.max_row + 1):
             cell = ws.cell(r, c)
@@ -945,7 +947,7 @@ def format_medinet_columns(wb, ws, code_row, data_start_row):
             value = cell.value
             if value is None or cell.data_type == "f":
                 continue
-            if code == "ngay_sinh":
+            if code in DATE_FIELDS:
                 d, err = parse_date_cell(value)
                 if d is None and isinstance(value, (int, float)) and not isinstance(value, bool):
                     try:
@@ -955,9 +957,10 @@ def format_medinet_columns(wb, ws, code_row, data_start_row):
                     except (ValueError, OverflowError):
                         pass
                 if d is not None:
-                    cell.value = d
-                # Ngày không hợp lệ giữ nguyên để người dùng sửa, không đoán ngày.
-                continue
+                    cell.value = d.strftime("%d/%m/%Y")
+                    cell.data_type = "s"
+                    continue
+                # Ngày không hợp lệ vẫn giữ nội dung gốc, chuyển Text để người dùng sửa.
             if isinstance(value, (datetime, date)):
                 text = value.strftime("%d/%m/%Y")
             elif isinstance(value, bool):
@@ -1623,7 +1626,7 @@ def annotate_workbook_raw(file_bytes, issues_df):
     """Tạo file Excel để tải về giữ nguyên nội dung dữ liệu gốc đã tải lên, chuẩn hóa kiểu dữ liệu — KHÔNG áp bất kỳ quy tắc
     'tự sửa dữ liệu' nào (không điền Phân Loại thể lực, không đề xuất Kết luận, không điền mặc
     định 'de_nghi', không áp các quy tắc tự sửa giới tính/tiền sử bệnh/ICD/loại khám...), KHÔNG
-    canh giữa dữ liệu. Chuẩn hóa ngay_sinh thành Date, keyword khác thành Text và làm 2 việc: (1) tắt khoá bảo vệ sheet như annotate_workbook() để vẫn
+    canh giữa dữ liệu. Chuẩn hóa tất cả cột dữ liệu thành Text và làm 2 việc: (1) tắt khoá bảo vệ sheet như annotate_workbook() để vẫn
     gõ sửa tay được; (2) tô màu + ghi chú vào các ô đang sai quy tắc (đỏ = lỗi, vàng = cảnh báo)
     để người dùng tự xem và tự sửa theo đúng dữ liệu gốc của mình.
     Trả về bytes của file .xlsx."""
@@ -1645,7 +1648,7 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
     (1) điền loại thể lực đã tính vào cột 'phanloai' (Phân Loại thể lực);
     (2) điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') và ô 'de_nghi' khi đang để trống;
     (3) áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...);
-    (3b) ngay_sinh là Date thực (dd/mm/yyyy); keyword còn lại là Text;
+    (3b) tất cả cột dữ liệu là Text; các ngày lưu chuỗi dd/mm/yyyy;
     (4) canh giữa dữ liệu trong toàn bộ vùng dữ liệu;
     (5) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
     File kết quả KHÔNG bị khoá/bảo vệ — vẫn filter, xoá, copy, paste bình thường.
