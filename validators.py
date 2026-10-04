@@ -1667,6 +1667,31 @@ def annotate_workbook_raw(file_bytes, issues_df):
     return out.getvalue()
 
 
+# Bảng chuyển mã do người dùng cung cấp: v1Danh_sach_ma_ICD10_cap_nhat.xlsx.
+# Chỉ thay mã 3 ký tự trong BI–DR của file xuất sau kiểm tra có tự sửa.
+ICD10_EXPORT_MAP = {'B18': 'B18.9', 'C34': 'C34.9', 'E05': 'E05.9', 'E10': 'E10.9', 'E11': 'E11.9', 'F41': 'F41.2', 'F78': 'F78.9', 'G40': 'G40.9', 'H52': 'H52.7', 'H66': 'H66.9', 'H81': 'H81.8', 'I10': 'I10', 'I20': 'I20.0', 'I25': 'I25.9', 'I64': 'I64', 'J20': 'J20.9', 'J30': 'J30.4', 'J45': 'J45.9', 'K02': 'K02.9', 'K29': 'K29.9', 'K35': 'K35.8', 'L20': 'L20.9', 'L23': 'L23.9', 'L40': 'L40.9', 'M10': 'M10.9', 'M13': 'M13.9', 'M17': 'M17.9', 'M19': 'M19.9', 'M47': 'M47.99', 'M51': 'M51.9', 'M54': 'M54.9', 'N20': 'N20.9', 'O82': 'O82.0'}
+ICD10_THREE_CHAR_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9_])([A-Za-z][0-9]{2})(?![A-Za-z0-9_]|\s*\.)"
+)
+
+
+def replace_icd10_codes_for_export(ws, data_start_row):
+    """Thay mã 3 ký tự theo bảng người dùng; giữ mã chi tiết và dấu phân cách."""
+    for row in ws.iter_rows(min_row=max(5, data_start_row), min_col=61,
+                            max_col=min(122, ws.max_column), max_row=ws.max_row):
+        for cell in row:
+            if cell.data_type == "f" or not isinstance(cell.value, str):
+                continue
+            value = ICD10_THREE_CHAR_TOKEN.sub(
+                lambda match: ICD10_EXPORT_MAP.get(match.group(1).upper(), match.group(0)),
+                cell.value,
+            )
+            if value != cell.value:
+                cell.value = value
+                cell.data_type = "s"
+                cell.number_format = "@"
+
+
 def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row=None,
                        denghi_by_row=None, data_fixes_by_row=None):
     """Tạo file Excel để tải về:
@@ -1728,6 +1753,7 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
     # (5) Tô màu + ghi chú vào từng ô lỗi/cảnh báo
     _mark_issue_cells(ws, issues_df)
     _, code_row, data_start_row, _ = detect_layout_rows(ws)
+    replace_icd10_codes_for_export(ws, data_start_row)
     format_medinet_columns(wb, ws, code_row, data_start_row)
 
     out = BytesIO()
