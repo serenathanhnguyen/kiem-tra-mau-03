@@ -320,6 +320,7 @@ def merge_mau03_files(sources):
         src_ws.append([idx + 1, ho_ten, cccd, unit_label, filename, "Có" if cccd in dup_cccds else ""])
 
     format_medinet_columns(wb, ws, base["code_row"], base_data_start_row)
+    format_medinet_columns(wb, src_ws, 1, 2)
     out = BytesIO()
     wb.save(out)
 
