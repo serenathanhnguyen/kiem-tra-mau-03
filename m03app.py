@@ -89,7 +89,7 @@ with tab_check:
                 f"và áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...) "
                 f"cho {n_fixed_rows} dòng. Toàn bộ vùng dữ liệu đã được **canh giữa**. "
                 "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết. "
-                "Ngày sinh là Date (dd/mm/yyyy); các keyword khác là Text. File không bị khoá — vẫn filter, xoá, copy, paste bình thường."
+                "Tất cả cột dữ liệu là Text; ngày lưu dạng chữ dd/mm/yyyy. File không bị khoá — vẫn filter, xoá, copy, paste bình thường."
             )
         except Exception as e:
             st.warning(f"Không tạo được file Excel đã đánh dấu: {e}")
@@ -106,7 +106,7 @@ with tab_check:
                 key="dl_raw_marked",
             )
             st.caption(
-                "File này giữ nguyên nội dung dữ liệu đã tải lên, chuẩn hóa ngày sinh thành Date và các keyword khác thành Text (không tự điền Phân Loại thể lực, "
+                "File này giữ nguyên nội dung dữ liệu đã tải lên, chuẩn hóa tất cả cột dữ liệu thành Text (không tự điền Phân Loại thể lực, "
                 "không tự sửa gì cả) — chỉ tô màu **đỏ** (lỗi) / **vàng** (cảnh báo) và ghi chú vào "
                 "đúng ô đang sai để bạn tự xem và tự sửa. File cũng không bị khoá."
             )
@@ -352,7 +352,7 @@ with tab_merge:
                         key="dl_merged",
                     )
                     st.caption(
-                        "Ngày sinh là Date (dd/mm/yyyy); các keyword khác là Text. Mã phiếu và 4 cột thính lực được bổ sung nếu thiếu; ô thiếu dữ liệu để trống. "
+                        "Tất cả cột dữ liệu là Text; ngày lưu dạng chữ dd/mm/yyyy. Mã phiếu và 4 cột thính lực được bổ sung nếu thiếu; ô thiếu dữ liệu để trống. "
                         "Có thể đưa file này qua tab \"🔍 Kiểm tra file\" ở trên để kiểm tra lại lần nữa "
                         "trước khi dùng script Tampermonkey."
                     )
@@ -373,7 +373,7 @@ with tab_merge:
 - File thiếu 1 vài mã field khác (không thuộc nhóm bắt buộc trên) vẫn được ghép, chỉ để **trống**
   đúng những ô đó — có cảnh báo rõ file nào thiếu mã gì.
 - Tự thêm **ma_phieu** trước **ngay_kham**, và 4 cột thính lực trước **loai_kham** khi thiếu.
-- **ngay_sinh** là Date thực, hiển thị dd/mm/yyyy; các keyword khác là Text. Dòng chú thích kiểu dữ liệu không được ghép thành hồ sơ.
+- Tất cả cột dữ liệu là **Text**, kể cả **ngay_sinh**; ngày lưu dạng chữ dd/mm/yyyy. Dòng chú thích kiểu dữ liệu không được ghép thành hồ sơ.
 - **CCCD trùng** (giữa các file, hoặc trùng ngay trong 1 file): **không chặn**, vẫn ghép đầy đủ, chỉ
   tô vàng + ghi chú ô CCCD trong file tải về và liệt kê trong bảng cảnh báo trên màn hình.
 - File kết quả có thêm **1 sheet phụ "Nguon_Ghep"** ghi rõ mỗi dòng bệnh nhân đến từ đơn vị/file nào
