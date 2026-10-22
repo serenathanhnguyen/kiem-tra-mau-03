@@ -26,6 +26,7 @@ from validators import (
     _build_code_col_map,
     clean_ws,
     is_blank,
+    normalize_cccd_value,
     find_last_data_row,
     FILL_WARN,
     format_medinet_columns,
@@ -200,7 +201,7 @@ def read_source_file(file_bytes, filename, unit_label):
         values = {code: ws.cell(row=r, column=c).value for code, c in col_map.items()}
         rows.append({
             "ho_ten": clean_ws(values.get("ho_ten")),
-            "cccd": clean_ws(values.get("dinh_danh_ca_nhan")),
+            "cccd": clean_ws(normalize_cccd_value(values.get("dinh_danh_ca_nhan"))),
             "values": values,
         })
 
