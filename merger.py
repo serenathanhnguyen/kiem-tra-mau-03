@@ -41,6 +41,9 @@ NEW_FIELDS = (
     ("tai_noitham_tp", "loai_kham", None, "Tai phải (Nói thầm)"),
 )
 
+# Cột Đường máu lúc đói — chèn ngay SAU 'kskdk_shm_duongmau' (tức TRƯỚC cột 'kskdk_shm_ure').
+GLUCOSE_FIELD = ("kskdk_shm_duongmau_lucdoi", "kskdk_shm_ure", "Đường máu lúc đói (mmol/L)", None)
+
 
 def _shift_ref(text, idx, context_sheet):
     """Dịch địa chỉ khi chèn cột; không dịch tham chiếu sheet danh mục hoặc chuỗi literal."""
@@ -121,13 +124,14 @@ def _insert_template_column(wb, ws, idx):
         table.ref = _shift_range(table.ref, idx)
 
 
-def ensure_new_fields(wb, ws, code_row):
+def ensure_new_fields(wb, ws, code_row, fields=None):
+    fields = NEW_FIELDS + (GLUCOSE_FIELD,) if fields is None else fields
     added = []
-    for i, (code, anchor, label, sublabel) in enumerate(NEW_FIELDS):
+    for i, (code, anchor, label, sublabel) in enumerate(fields):
         cmap = _build_code_col_map(ws, code_row)
         if code in cmap:
             continue
-        following = [x[0] for x in NEW_FIELDS[i + 1:] if x[1] == anchor and x[0] in cmap]
+        following = [x[0] for x in fields[i + 1:] if x[1] == anchor and x[0] in cmap]
         anchor_code = following[0] if following else anchor
         if anchor_code not in cmap:
             raise ValueError(f"Không có keyword '{anchor_code}' để xác định vị trí cột '{code}'.")
@@ -148,8 +152,12 @@ def ensure_new_fields(wb, ws, code_row):
                 )
             if code_row >= 3:
                 ws.merge_cells(start_row=code_row-2, end_row=code_row-1, start_column=idx, end_column=idx)
+        if code == GLUCOSE_FIELD[0] and code_row >= 3:
+            ws.merge_cells(start_row=code_row-2, end_row=code_row-1, start_column=idx, end_column=idx)
         added.append(code)
     cmap = _build_code_col_map(ws, code_row)
+    if not all(x[0] in cmap for x in NEW_FIELDS[1:]):
+        return added
     hearing = [cmap[x[0]] for x in NEW_FIELDS[1:]]
     if added and code_row >= 3 and hearing == list(range(hearing[0], hearing[0] + 4)):
         for ref in list(ws.merged_cells.ranges):
@@ -334,3 +342,21 @@ def merge_mau03_files(sources):
         "layout_notes": [(s["filename"], s["layout_note"]) for s in sources if s["layout_note"]],
     }
     return out.getvalue(), summary
+
+
+def ensure_glucose_column_bytes(file_bytes):
+    """Dùng cho tab 'Kiểm tra file': nếu file CHƯA có cột 'Đường máu lúc đói' thì chèn ngay sau
+    'Đường máu' rồi trả về bytes mới; đã có (hoặc không tìm được mốc) thì trả nguyên bytes gốc.
+    Trả về (bytes, đã_thêm_cột: bool)."""
+    wb = openpyxl.load_workbook(BytesIO(file_bytes))
+    if SHEET_MAIN not in wb.sheetnames:
+        return file_bytes, False
+    ws = wb[SHEET_MAIN]
+    _label_row, code_row, _start, _note = detect_layout_rows(ws)
+    cmap = _build_code_col_map(ws, code_row)
+    if GLUCOSE_FIELD[0] in cmap or GLUCOSE_FIELD[1] not in cmap:
+        return file_bytes, False
+    ensure_new_fields(wb, ws, code_row, fields=(GLUCOSE_FIELD,))
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue(), True
