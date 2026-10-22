@@ -771,6 +771,56 @@ def compute_data_fixes_for_row(raw_by_code):
 # HÀM TIỆN ÍCH
 # ============================================================
 
+def normalize_cccd_value(value):
+    """Quy tắc Jo bổ sung (22/10/2026): 'dinh_danh_ca_nhan' phải đủ 12 ký tự dạng text — đang đúng
+    11 chữ số (thường do Excel làm mất số 0 đầu khi ô lưu dạng số) thì thêm số 0 vào đầu.
+    Số lưu dạng số (int/float) được đổi sang chuỗi chữ số trước. Độ dài khác 11 giữ nguyên để
+    check_cell() tiếp tục báo lỗi. Trả về giá trị mới (str) hoặc giá trị gốc nếu không cần sửa."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            if float(value) != int(value):
+                return value
+            text = str(int(value))
+        except (ValueError, OverflowError):
+            return value
+    else:
+        text = clean_ws(value)
+    if re.fullmatch(r"\d{11}", text):
+        return "0" + text
+    if isinstance(value, (int, float, Decimal)) and re.fullmatch(r"\d{12}", text):
+        return text  # số lưu dạng số nhưng đã đủ 12 chữ số → chuyển sang text
+    return value
+
+
+# Cột BL (64) → DR (122): các ô phân loại/chẩn đoán — nếu có chữ "Loại" (vd 'Loại 1') thì bỏ, chỉ giữ số
+LOAI_COL_FIRST = 64    # BL
+LOAI_COL_LAST = 122    # DR
+_LOAI_RE = re.compile(r"\blo[ạa]i\s*[:\-]?\s*(?=\d)", re.IGNORECASE)
+
+
+def strip_loai_value(value):
+    """Bỏ chữ 'Loại' đứng trước số ('Loại 1' → '1', 'loại 2' → '2'); chỉ giữ lại số.
+    Chỉ tác động khi 'Loại' đi liền với chữ số, để không đụng tới văn bản tự do khác."""
+    if not isinstance(value, str):
+        return value
+    import unicodedata
+    text = unicodedata.normalize("NFC", value)
+    if not _LOAI_RE.search(text):
+        return value
+    return clean_ws(_LOAI_RE.sub("", text))
+
+
+def normalize_cell_for_code(code, col_idx, value):
+    """Áp 2 quy tắc chuẩn hóa mới cho 1 ô: CCCD đủ 12 số; bỏ chữ 'Loại' ở cột BL-DR."""
+    if code == "dinh_danh_ca_nhan":
+        return normalize_cccd_value(value)
+    if LOAI_COL_FIRST <= col_idx <= LOAI_COL_LAST:
+        return strip_loai_value(value)
+    return value
+
+
 def clean_ws(value):
     """Dọn khoảng trắng ẩn (NBSP, zero-width...) ở bất kỳ vị trí nào, gộp khoảng trắng thừa."""
     if value is None:
@@ -1484,7 +1534,7 @@ def validate_workbook(file_bytes):
             continue  # dòng trống hoàn toàn giữa các dòng có dữ liệu — bỏ qua
 
         ho_ten = clean_ws(ws.cell(row=r, column=ho_ten_col).value) if ho_ten_col else ""
-        cccd = clean_ws(ws.cell(row=r, column=cccd_col).value) if cccd_col else ""
+        cccd = clean_ws(normalize_cccd_value(ws.cell(row=r, column=cccd_col).value)) if cccd_col else ""
 
         row_ctx = {}
         raw_by_code = {}
@@ -1502,7 +1552,7 @@ def validate_workbook(file_bytes):
                                             ("phukhoa_tuchoikham", "phukhoa_phanloai")):
             tuchoi_def = col_defs_by_code.get(tuchoi_code)
             if tuchoi_def:
-                tv = clean_ws(ws.cell(row=r, column=tuchoi_def["col"]).value)
+                tv = clean_ws(normalize_cell_for_code(tuchoi_code, tuchoi_def["col"], ws.cell(row=r, column=tuchoi_def["col"]).value))
                 if tv == "1":
                     skip_phanloai_codes.add(phanloai_code)
         row_ctx["_skip_phanloai_range_codes"] = skip_phanloai_codes
@@ -1511,7 +1561,7 @@ def validate_workbook(file_bytes):
             code = cdef["code"]
             if not code:
                 continue
-            raw_value = ws.cell(row=r, column=cdef["col"]).value
+            raw_value = normalize_cell_for_code(code, cdef["col"], ws.cell(row=r, column=cdef["col"]).value)
             raw_by_code[code] = raw_value
             cell_issues = check_cell(code, raw_value, col_defs_by_code, refs, row_ctx)
             for iss in cell_issues:
@@ -1731,6 +1781,25 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
     if de_nghi_col:
         for r, val in denghi_by_row.items():
             ws.cell(row=r, column=de_nghi_col).value = val
+
+    # (2b) Chuẩn hóa mới (22/10/2026): CCCD đủ 12 ký tự dạng text (11 số → thêm 0 đầu);
+    # cột BL-DR bỏ chữ 'Loại' chỉ giữ số (vd 'Loại 1' → '1'). Chạy TRƯỚC các quy tắc tự sửa khác.
+    norm_key_cols = [c for code, c in col_map.items() if code in ("ho_ten", "dinh_danh_ca_nhan")]
+    norm_last_row = find_last_data_row(ws, norm_key_cols, data_start_row) if norm_key_cols else ws.max_row
+    code_by_col_norm = {c: code for code, c in col_map.items()}
+    for r in range(data_start_row, norm_last_row + 1):
+        if is_type_annotation_row(ws, r, col_map):
+            continue
+        for c in [col_map.get("dinh_danh_ca_nhan")] + list(range(LOAI_COL_FIRST, LOAI_COL_LAST + 1)):
+            if not c:
+                continue
+            cell = ws.cell(row=r, column=c)
+            if cell.value is None or cell.data_type == "f":
+                continue
+            new_v = normalize_cell_for_code(code_by_col_norm.get(c), c, cell.value)
+            if new_v is not cell.value and new_v != cell.value:
+                cell.value = new_v
+                cell.data_type = "s"
 
     # (3) Các quy tắc tự sửa dữ liệu khác — giới tính (AY/AZ/CV-DE), tiền sử bệnh 0/1 (AA-AU),
     # ICD=0 -> null (BI-DB), loại khám (ED) mặc định 2, số lượng hồng cầu (EE) mặc định 0
