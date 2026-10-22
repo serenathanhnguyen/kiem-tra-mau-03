@@ -130,6 +130,9 @@ with tab_check:
             """
 - **Ô bắt buộc** (nhãn có dấu `*`) không được để trống.
 - **Ngày tháng** (`ngay_kham`, `ngay_sinh`) đúng định dạng `dd/MM/yyyy`.
+- **Tự chuẩn hóa (file tải về)**: cột `dinh_danh_ca_nhan` (CCCD) lưu dạng text, đang đúng 11 chữ số thì tự thêm
+  số **0** ở đầu cho đủ 12; các ô từ cột **BL đến DR** nếu có chữ "Loại" (vd "Loại 1", "Loại 2") thì bỏ chữ
+  "Loại", chỉ giữ lại số.
 - **CCCD** đủ 12 chữ số, và **không trùng** với dòng khác trong cùng file. Ngoài ra suy từ CCCD để
   đối chiếu: ký tự thứ 4 (chẵn → Nam, lẻ → Nữ) so với ô **giới tính**; ký tự thứ 4-6 (thế kỷ + 2 số
   cuối năm sinh) so với năm của ô **ngày sinh** — lệch thì báo lỗi.
