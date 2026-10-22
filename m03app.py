@@ -8,7 +8,7 @@ import streamlit as st
 from validators import (
     validate_workbook, annotate_workbook, annotate_workbook_raw, SHEET_MAIN, DE_NGHI_DEFAULT_VALUE,
 )
-from merger import read_source_file, merge_mau03_files, default_unit_label
+from merger import read_source_file, merge_mau03_files, default_unit_label, ensure_glucose_column_bytes
 
 st.set_page_config(page_title="Kiểm tra & ghép file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
 st.title("✅ Công cụ Mẫu 03 (KSKDK) - Medinet")
@@ -31,9 +31,18 @@ with tab_check:
 
     if uploaded is not None:
         try:
+            # Thêm cột "Đường máu lúc đói (mmol/L)" ngay sau "Đường máu" nếu file chưa có
+            data_bytes, glucose_added = ensure_glucose_column_bytes(uploaded.getvalue())
+        except Exception as e:
+            st.error(f"Không thêm được cột 'Đường máu lúc đói': {e}")
+            st.stop()
+        if glucose_added:
+            st.info("Đã tự thêm cột **Đường máu lúc đói (mmol/L)** (`kskdk_shm_duongmau_lucdoi`) ngay sau cột "
+                    "Đường máu — chữ cái cột trong bảng lỗi bên dưới tính theo file đã thêm cột này.")
+        try:
             with st.spinner("Đang kiểm tra..."):
                 (issues_df, structural_notes, n_rows_checked, col_defs, theluc_by_row,
-                 danhmucdenghi_by_row, denghi_by_row, data_fixes_by_row) = validate_workbook(uploaded.getvalue())
+                 danhmucdenghi_by_row, denghi_by_row, data_fixes_by_row) = validate_workbook(data_bytes)
         except Exception as e:
             st.error(f"Không đọc được file: {e}")
             st.stop()
@@ -71,7 +80,7 @@ with tab_check:
         # File Excel đã kiểm tra: đã điền phân loại thể lực + tô màu/ghi chú ô lỗi (luôn có, kể cả khi không lỗi)
         try:
             annotated = annotate_workbook(
-                uploaded.getvalue(), issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row,
+                data_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row, denghi_by_row,
                 data_fixes_by_row
             )
             st.download_button(
@@ -86,7 +95,7 @@ with tab_check:
                 f"Đã tự tính & điền **Phân Loại thể lực** cho {len(theluc_by_row)} dòng, "
                 f"đề xuất **Kết luận (danh_muc_de_nghi)** cho {len(danhmucdenghi_by_row)} dòng đang trống, "
                 f"điền mặc định **'{DE_NGHI_DEFAULT_VALUE}'** cho ô **de_nghi** ở {len(denghi_by_row)} dòng đang trống, "
-                f"và áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...) "
+                f"và áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, cận lâm sàng khác, chỗ ở hiện tại...) "
                 f"cho {n_fixed_rows} dòng. Toàn bộ vùng dữ liệu đã được **canh giữa**. "
                 "Trong file tải về: ô **đỏ** là lỗi, ô **vàng** là cảnh báo — di chuột vào ô để xem ghi chú chi tiết. "
                 "Tất cả cột dữ liệu là Text; ngày lưu dạng chữ dd/mm/yyyy. File không bị khoá — vẫn filter, xoá, copy, paste bình thường."
@@ -97,7 +106,7 @@ with tab_check:
         # File Excel giữ NGUYÊN dữ liệu gốc đã tải lên — không tự sửa/tự điền gì cả, chỉ tô màu +
         # ghi chú vào đúng các ô đang sai quy tắc, để tự xem và tự sửa theo đúng dữ liệu của mình.
         try:
-            raw_marked = annotate_workbook_raw(uploaded.getvalue(), issues_df)
+            raw_marked = annotate_workbook_raw(data_bytes, issues_df)
             st.download_button(
                 "⬇ Tải file Excel gốc (giữ nguyên dữ liệu, chỉ đánh dấu ô sai quy tắc)",
                 data=raw_marked,
@@ -201,7 +210,11 @@ with tab_check:
   - **Các cột `*_chandoansobo_icd` / `*_chandoanxacdinh_icd`** (12 khối chuyên khoa, KHÔNG gồm
     Mắt): nếu giá trị là **0** thì chuyển thành **trống (null)**.
   - **Loại khám** (cột ED): nếu đang trống → điền mặc định **= 2**.
-  - **Số lượng hồng cầu** (cột EE, `kskdk_xnm_slhc`): nếu đang trống → điền mặc định **= 0**.
+  - **Cận lâm sàng khác** (`can_lam_sang_khac`): nếu đang trống → điền mặc định **= 2**.
+  - **Chỗ ở hiện tại** (`dia_chi_hien_tai`, cột O): nếu đang trống → điền giá trị cột **Phường xã** (`ward_id`, cột Q).
+  - **Số lượng hồng cầu**: không còn tự điền mặc định 0.
+  - **Cột "Đường máu lúc đói (mmol/L)"** (`kskdk_shm_duongmau_lucdoi`): nếu file chưa có thì tự chèn ngay sau cột Đường máu (cả tab Kiểm tra lẫn tab Ghép file).
+  - **Dòng "ĐẾM" ở cuối file đã check**: đếm số ô có dữ liệu của từng cột `*_phanloai` để đối chiếu — xoá dòng này trước khi nhập Medinet.
   - **`*_tuchoikham`** (cột CV: `sankhoa_tuchoikham`, cột DA: `phukhoa_tuchoikham`) = 1: cột phân loại
     tương ứng (CZ: `sankhoa_phanloai`, DE: `phukhoa_phanloai`) chuyển thành **trống (null)**.
   - **Giới tính Nữ (`gioi_tinh` = 2)** và cột CV, CX, CY (`sankhoa_tuchoikham`, `sankhoa_chandoansobo_icd`,
