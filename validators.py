@@ -5,7 +5,7 @@ from io import BytesIO
 import openpyxl
 import pandas as pd
 from openpyxl.utils import get_column_letter
-from openpyxl.styles import PatternFill, Alignment
+from openpyxl.styles import PatternFill, Alignment, Font
 from openpyxl.comments import Comment
 from openpyxl.utils.datetime import from_excel
 from decimal import Decimal
@@ -494,7 +494,9 @@ def compute_data_fixes_for_row(raw_by_code):
         Sản khoa/Phụ khoa — KHÔNG còn gồm khối Mắt, xem quy tắc riêng bên dưới): giá trị 0 thì
         chuyển null.
       - 'loai_kham' (cột ED): trống thì điền = 2.
-      - 'kskdk_xnm_slhc' — Số lượng hồng cầu (cột EE): trống thì điền = 0.
+      - 'can_lam_sang_khac' — Cận lâm sàng khác: trống thì điền = 2.
+      - 'dia_chi_hien_tai' — Chỗ ở hiện tại: trống thì điền giá trị 'ward_id' (Phường xã).
+      - (Số lượng hồng cầu 'kskdk_xnm_slhc' KHÔNG còn tự điền 0.)
       - 4 chỉ số sinh tồn — TRỐNG thì tự điền mặc định; đã có số mà vượt quá xa khoảng an toàn thì
         cũng tự điền về mặc định (khác VITAL_SIGN_RANGES — đó chỉ cảnh báo nhẹ, không tự sửa):
         'nhiptho' trống → = 20, ngoài khoảng (>25 hoặc <16) → = 20; 'mach' trống → = 80, ngoài
@@ -656,8 +658,16 @@ def compute_data_fixes_for_row(raw_by_code):
     if blank("loai_kham"):
         fixes["loai_kham"] = 2
 
-    if blank("kskdk_xnm_slhc"):
-        fixes["kskdk_xnm_slhc"] = 0
+    # Số lượng hồng cầu (kskdk_xnm_slhc): KHÔNG còn tự điền mặc định 0 (bỏ theo yêu cầu 22/10/2026).
+
+    # Quy tắc mới (22/10/2026): 'Cận lâm sàng khác' (can_lam_sang_khac, cột FP) trống → điền mặc định 2.
+    if blank("can_lam_sang_khac"):
+        fixes["can_lam_sang_khac"] = 2
+
+    # Quy tắc mới (22/10/2026): 'Chỗ ở hiện tại' (dia_chi_hien_tai, cột O) trống → điền giá trị cột
+    # 'Phường xã' (ward_id, cột Q) vào (nếu Phường xã cũng trống thì không có gì để điền).
+    if blank("dia_chi_hien_tai") and not blank("ward_id"):
+        fixes["dia_chi_hien_tai"] = val("ward_id")
 
     # Quy tắc mới (Jo bổ sung): 4 chỉ số sinh tồn (nhiptho, mach, huyetaptamthu, huyetaptamtruong) —
     # nếu đang để TRỐNG thì tự điền giá trị mặc định; nếu đã có số mà vượt quá xa khoảng an toàn thì
@@ -1160,6 +1170,12 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
                 "message": f"Đang để trống — cần đủ 10 số; hệ thống sẽ tự điền mặc định '{SDT_DEFAULT_VALUE}' trong file tải về",
             })
             return issues
+        if code == "dia_chi_hien_tai" and row_ctx.get("_ward_text"):
+            issues.append({
+                "level": "Cảnh báo",
+                "message": "Đang để trống — hệ thống sẽ tự điền theo cột Phường xã trong file tải về",
+            })
+            return issues
         if skip_phanloai_range:
             return issues
         if required:
@@ -1544,6 +1560,10 @@ def validate_workbook(file_bytes):
             dt_codes = [p.strip() for p in clean_ws(ws.cell(row=r, column=dt_def["col"]).value).split(",") if p.strip()]
             row_ctx["_skip_noicongtac_catalog"] = ("1" in dt_codes or "2" in dt_codes)
 
+        # Đọc trước Phường xã để check_cell biết có thể tự điền 'Chỗ ở hiện tại' khi trống không
+        ward_def = col_defs_by_code.get("ward_id")
+        row_ctx["_ward_text"] = clean_ws(ws.cell(row=r, column=ward_def["col"]).value) if ward_def else ""
+
         # Đọc trước sankhoa_tuchoikham/phukhoa_tuchoikham (yêu cầu mới của Jo): khối nào đã chọn
         # 'Từ chối khám' (=1) thì check_cell() bỏ qua hẳn kiểm tra '_phanloai' (1-5) của đúng khối
         # đó — xem 'skip_phanloai_range' trong check_cell().
@@ -1742,12 +1762,39 @@ def replace_icd10_codes_for_export(ws, data_start_row):
                 cell.number_format = "@"
 
 
+def add_phanloai_count_row(ws, col_map, data_start_row, last_row):
+    """Thêm 1 dòng cuối (ngay sau dòng dữ liệu cuối) đếm số ô có dữ liệu của từng cột '*_phanloai'
+    (12 khối chuyên khoa + Mắt + Sản/Phụ khoa; không gồm cột 'phanloai' thể lực) để tự đối chiếu.
+    Chỉ ghi nhãn ở cột STT (cột A) và số ở đúng cột phân loại — KHÔNG đụng ho_ten/CCCD nên không bị
+    tính là 1 bệnh nhân. Dòng này chỉ để kiểm tra: XOÁ trước khi nhập Medinet. Ghi số thật (không
+    phải công thức) vì cột dữ liệu đã được đặt định dạng Text."""
+    cols = sorted((c, code) for code, c in col_map.items() if code.endswith("_phanloai"))
+    if not cols or last_row < data_start_row:
+        return None
+    r = last_row + 1
+    fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    center = Alignment(horizontal="center", vertical="center")
+    label = ws.cell(row=r, column=1)
+    label.value = "ĐẾM"
+    label.fill, label.alignment, label.font = fill, center, Font(bold=True)
+    for c, _code in cols:
+        n = sum(
+            1 for rr in range(data_start_row, last_row + 1)
+            if not is_type_annotation_row(ws, rr, col_map) and not is_blank(ws.cell(row=rr, column=c).value)
+        )
+        cell = ws.cell(row=r, column=c)
+        cell.value = n
+        cell.number_format = "General"
+        cell.fill, cell.alignment, cell.font = fill, center, Font(bold=True)
+    return r
+
+
 def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row=None,
                        denghi_by_row=None, data_fixes_by_row=None):
     """Tạo file Excel để tải về:
     (1) điền loại thể lực đã tính vào cột 'phanloai' (Phân Loại thể lực);
     (2) điền đề xuất cho ô Kết luận ('danh_muc_de_nghi') và ô 'de_nghi' khi đang để trống;
-    (3) áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, hồng cầu...);
+    (3) áp các quy tắc tự sửa dữ liệu khác (giới tính, tiền sử bệnh 0/1, ICD=0, loại khám, cận lâm sàng khác, chỗ ở hiện tại...);
     (3b) tất cả cột dữ liệu là Text; các ngày lưu chuỗi dd/mm/yyyy;
     (4) canh giữa dữ liệu trong toàn bộ vùng dữ liệu;
     (5) tô màu + ghi chú vào từng ô lỗi/cảnh báo để người dùng biết chỗ cần sửa.
@@ -1802,7 +1849,7 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
                 cell.data_type = "s"
 
     # (3) Các quy tắc tự sửa dữ liệu khác — giới tính (AY/AZ/CV-DE), tiền sử bệnh 0/1 (AA-AU),
-    # ICD=0 -> null (BI-DB), loại khám (ED) mặc định 2, số lượng hồng cầu (EE) mặc định 0
+    # ICD=0 -> null (BI-DB), loại khám mặc định 2, cận lâm sàng khác mặc định 2, chỗ ở hiện tại trống -> Phường xã
     for r, fixes in data_fixes_by_row.items():
         for code, new_val in fixes.items():
             col = col_map.get(code)
@@ -1824,6 +1871,7 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
     _, code_row, data_start_row, _ = detect_layout_rows(ws)
     replace_icd10_codes_for_export(ws, data_start_row)
     format_medinet_columns(wb, ws, code_row, data_start_row)
+    add_phanloai_count_row(ws, col_map, data_start_row, last_row)
 
     out = BytesIO()
     wb.save(out)
