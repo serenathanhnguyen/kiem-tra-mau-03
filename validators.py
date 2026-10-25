@@ -191,7 +191,8 @@ FILL_WARN = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="sol
 
 # ============================================================
 # QUY TẮC "TỰ SỬA DỮ LIỆU" TRONG FILE XUẤT RA (annotate_workbook)
-# Vị trí cột theo đúng file mẫu chuẩn Medinet (cột AA-AU, BA-BF, BI-DB, ED, EE...).
+# Mẫu hiện tại (file 'keyword mẫu 3 cột FY'): STT ở A, 'ma_phieu' ở B, 'doi_tuong_kham' ở D... Mọi thao tác
+# trong code đều tìm cột theo MÃ FIELD (keyword dòng 4), chữ cái cột trong chú thích chỉ để minh họa.
 # Đa số quy tắc CHỈ ảnh hưởng file Excel tải về, KHÔNG ảnh hưởng bảng lỗi/cảnh báo (vẫn tính trên
 # giá trị gốc) — RIÊNG 20 câu tiền sử bệnh AB-AU (BINARY_STRICT_FIELDS, không tính benh_5nam) và
 # khối Mắt (mat_*, xem check_mat_rules) là NGOẠI LỆ: theo yêu cầu Jo, để trống các ô này vẫn PHẢI
@@ -486,14 +487,14 @@ def compute_data_fixes_for_row(raw_by_code):
     vốn vẫn tính trên giá trị gốc đã upload). Giá trị None trong dict nghĩa là XOÁ TRẮNG ô đó.
       - gioi_tinh = 1 (Nam): xoá trắng các ô chỉ dành cho nữ (thai_san_co_khong, thai_san_liet_ke,
         và toàn bộ khối Sản khoa/Phụ khoa — cột AY, AZ, CV..DE).
-      - gioi_tinh = 2 (Nữ): ô 'thai_san_co_khong' (cột AY) nếu KHÁC 1 (để trống, "Không", 0, hay
+      - gioi_tinh = 2 (Nữ): ô 'thai_san_co_khong' (cột BA) nếu KHÁC 1 (để trống, "Không", 0, hay
         bất kỳ giá trị nào khác 1) thì chỉnh thành 0.
       - Cột AB-AU (20 câu tiền sử bệnh 0/1, mã field ts_*): đã điền giá trị khác "1" thì chỉnh về 0;
         ĐANG TRỐNG cũng chỉnh về 0 (yêu cầu mới — trước đây bỏ qua ô trống).
       - Các cột '*_chandoansobo_icd' / '*_chandoanxacdinh_icd' (cột BI-DB, 12 khối chuyên khoa +
         Sản khoa/Phụ khoa — KHÔNG còn gồm khối Mắt, xem quy tắc riêng bên dưới): giá trị 0 thì
         chuyển null.
-      - 'loai_kham' (cột ED): trống thì điền = 2.
+      - 'loai_kham' (cột EJ): trống thì điền = 2.
       - 'can_lam_sang_khac' — Cận lâm sàng khác: trống thì điền = 2.
       - 'dia_chi_hien_tai' — Chỗ ở hiện tại: trống thì điền giá trị 'ward_id' (Phường xã).
       - (Số lượng hồng cầu 'kskdk_xnm_slhc' KHÔNG còn tự điền 0.)
@@ -532,7 +533,7 @@ def compute_data_fixes_for_row(raw_by_code):
         phanloai = 1 cho đúng khối đó.
       - Bất kỳ ô '*_chandoanxacdinh_icd' nào (12 khối chuyên khoa + Sản khoa/Phụ khoa, KHÔNG gồm
         Mắt) có giá trị KHÁC 0 và KHÁC 1 (tức có mã ICD thật, không phải giá trị rác/placeholder) →
-        điền cố định 'danh_muc_de_nghi' (cột FP, "Kết Luận") = "Đã có bệnh mạn tính, tiếp tục điều
+        điền cố định 'danh_muc_de_nghi' (cột FW, "Kết Luận") = "Đã có bệnh mạn tính, tiếp tục điều
         trị theo phác đồ/toa cũ" — ghi đè cả khi ô này đã có giá trị khác.
       - Khối Mắt (mat_chuaphathienbatthuong/mat_chandoansobo_icd/mat_chandoanxacdinh_icd/
         mat_phanloai) — quy tắc RIÊNG (đã cập nhật theo file quy tắc 24/09/2026, BỎ điều kiện thị
@@ -640,7 +641,7 @@ def compute_data_fixes_for_row(raw_by_code):
 
     # Quy tắc mới (Jo bổ sung): bất kỳ ô '*_chandoanxacdinh_icd' nào (13 khối + Sản khoa/Phụ khoa)
     # có giá trị KHÁC 0 VÀ KHÁC 1 (mã ICD thật, không phải 0/1 rác) → ép cứng Kết luận
-    # ('danh_muc_de_nghi', cột FP) = "Đã có bệnh mạn tính...", ghi đè cả giá trị đang có sẵn.
+    # ('danh_muc_de_nghi', cột FW) = "Đã có bệnh mạn tính...", ghi đè cả giá trị đang có sẵn.
     def has_real_xacdinh(code):
         if blank(code):
             return False
@@ -660,7 +661,7 @@ def compute_data_fixes_for_row(raw_by_code):
 
     # Số lượng hồng cầu (kskdk_xnm_slhc): KHÔNG còn tự điền mặc định 0 (bỏ theo yêu cầu 22/10/2026).
 
-    # Quy tắc mới (22/10/2026): 'Cận lâm sàng khác' (can_lam_sang_khac, cột FP) trống → điền mặc định 2.
+    # Quy tắc mới (22/10/2026): 'Cận lâm sàng khác' (can_lam_sang_khac, cột FQ) trống → điền mặc định 2.
     if blank("can_lam_sang_khac"):
         fixes["can_lam_sang_khac"] = 2
 
@@ -804,9 +805,32 @@ def normalize_cccd_value(value):
     return value
 
 
-# Cột BL (64) → DR (122): các ô phân loại/chẩn đoán — nếu có chữ "Loại" (vd 'Loại 1') thì bỏ, chỉ giữ số
-LOAI_COL_FIRST = 64    # BL
-LOAI_COL_LAST = 122    # DR
+# Các ô phân loại/chẩn đoán của 14 khối chuyên khoa (Nội khoa → Răng Hàm Mặt, gồm Sản/Phụ khoa/Mắt) —
+# nhận diện theo MÃ FIELD (keyword ở dòng 4), KHÔNG theo số thứ tự cột, để file thêm/bớt cột (vd chèn
+# 'ma_phieu' ở cột B) vẫn xử lý đúng cột. Nếu có chữ "Loại" (vd 'Loại 1') thì bỏ, chỉ giữ số.
+SPECIALTY_PREFIXES = (
+    "noikhoa", "hohap", "tieuhoa", "thantietnieu", "noitiet", "coxuongkhop", "thankinh",
+    "tamthan", "ngoaikhoa", "dalieu", "sankhoa", "phukhoa", "mat", "tmh", "rhm",
+)
+SPECIALTY_SUFFIXES = (
+    "_tuchoikham", "_chuaphathienbatthuong", "_chandoansobo_icd", "_chuandoansobo_icd",
+    "_chandoanxacdinh_icd", "_phanloai",
+)
+ICD_SUFFIXES = ("_chandoansobo_icd", "_chuandoansobo_icd", "_chandoanxacdinh_icd")
+
+
+def is_specialty_block_code(code, suffixes=SPECIALTY_SUFFIXES):
+    """True nếu mã field thuộc khối chuyên khoa (vd 'noikhoa_phanloai', 'sankhoa_chandoansobo_icd')."""
+    if not code or not isinstance(code, str):
+        return False
+    return any(code == p + sfx for p in SPECIALTY_PREFIXES for sfx in suffixes)
+
+
+def specialty_block_columns(col_map, suffixes=SPECIALTY_SUFFIXES):
+    """Danh sách số cột (đã sắp xếp) của các mã field khối chuyên khoa có trong col_map."""
+    return sorted(c for code, c in col_map.items() if is_specialty_block_code(code, suffixes))
+
+
 _LOAI_RE = re.compile(r"\blo[ạa]i\s*[:\-]?\s*(?=\d)", re.IGNORECASE)
 
 
@@ -823,10 +847,11 @@ def strip_loai_value(value):
 
 
 def normalize_cell_for_code(code, col_idx, value):
-    """Áp 2 quy tắc chuẩn hóa mới cho 1 ô: CCCD đủ 12 số; bỏ chữ 'Loại' ở cột BL-DR."""
+    """Áp 2 quy tắc chuẩn hóa cho 1 ô: CCCD đủ 12 số; bỏ chữ 'Loại' ở các cột khối chuyên khoa
+    (xác định theo MÃ FIELD, không theo vị trí cột — tham số col_idx giữ lại để tương thích)."""
     if code == "dinh_danh_ca_nhan":
         return normalize_cccd_value(value)
-    if LOAI_COL_FIRST <= col_idx <= LOAI_COL_LAST:
+    if is_specialty_block_code(code):
         return strip_loai_value(value)
     return value
 
@@ -996,31 +1021,41 @@ def format_medinet_columns(wb, ws, code_row, data_start_row):
             for c in col_map.values():
                 if ws.cell(r, c).data_type != "f":
                     ws.cell(r, c).value = None
-    # Mặc định theo vị trí cột của mẫu hiện tại, chỉ trên dòng có dữ liệu.
-    # EE–EH luôn nhận giá trị yêu cầu; AW chỉ bổ sung khi null/trống.
-    default_columns = {135: "5", 136: "5", 137: "0,5", 138: "0,5"}
-    target_columns = {49, *default_columns}
+    # Mặc định theo MÃ FIELD (keyword dòng 4), không theo số thứ tự cột — chèn thêm cột (vd 'ma_phieu')
+    # không làm lệch. 4 ô thính lực luôn nhận giá trị yêu cầu; 'benh_khac' chỉ bổ sung khi null/trống.
+    # Sheet không có các keyword này (vd 'Nguon_Ghep') thì không bị ghi gì.
+    default_by_code = {
+        "tai_noithuong_tt": "5", "tai_noithuong_tp": "5",
+        "tai_noitham_tt": "0,5", "tai_noitham_tp": "0,5",
+    }
+    default_columns = {col_map[k]: v for k, v in default_by_code.items() if k in col_map}
+    benh_khac_col = col_map.get("benh_khac")
+    target_columns = set(default_columns)
+    if benh_khac_col:
+        target_columns.add(benh_khac_col)
     existing_max_col = ws.max_column
-    for r in range(max(5, data_start_row), ws.max_row + 1):
-        if is_type_annotation_row(ws, r, col_map):
-            continue
-        # Không dùng chính các ô mặc định để xác định dòng có dữ liệu.
-        if not any(
-            not is_blank(ws.cell(r, c).value)
-            for c in range(1, existing_max_col + 1)
-            if c not in target_columns
-        ):
-            continue
-        aw = ws.cell(r, 49)
-        if is_blank(aw.value) or (
-            isinstance(aw.value, str) and clean_ws(aw.value).lower() == "null"
-        ):
-            aw.value = "Không"
-            aw.data_type = "s"
-        for c, value in default_columns.items():
-            cell = ws.cell(r, c)
-            cell.value = value
-            cell.data_type = "s"
+    if target_columns:
+        for r in range(max(5, data_start_row), ws.max_row + 1):
+            if is_type_annotation_row(ws, r, col_map):
+                continue
+            # Không dùng chính các ô mặc định để xác định dòng có dữ liệu.
+            if not any(
+                not is_blank(ws.cell(r, c).value)
+                for c in range(1, existing_max_col + 1)
+                if c not in target_columns
+            ):
+                continue
+            if benh_khac_col:
+                bk = ws.cell(r, benh_khac_col)
+                if is_blank(bk.value) or (
+                    isinstance(bk.value, str) and clean_ws(bk.value).lower() == "null"
+                ):
+                    bk.value = "Không"
+                    bk.data_type = "s"
+            for c, value in default_columns.items():
+                cell = ws.cell(r, c)
+                cell.value = value
+                cell.data_type = "s"
     code_by_col = {c: code for code, c in col_map.items()}
     for c in range(1, ws.max_column + 1):
         code = code_by_col.get(c)
@@ -1746,10 +1781,13 @@ ICD10_THREE_CHAR_TOKEN = re.compile(
 
 
 def replace_icd10_codes_for_export(ws, data_start_row):
-    """Thay mã 3 ký tự theo bảng người dùng; giữ mã chi tiết và dấu phân cách."""
-    for row in ws.iter_rows(min_row=max(5, data_start_row), min_col=61,
-                            max_col=min(122, ws.max_column), max_row=ws.max_row):
-        for cell in row:
+    """Thay mã 3 ký tự theo bảng người dùng; giữ mã chi tiết và dấu phân cách.
+    Chỉ áp cho các cột ICD của khối chuyên khoa, xác định theo MÃ FIELD (keyword dòng 4)."""
+    _label_row, code_row, _start, _note = detect_layout_rows(ws)
+    icd_cols = specialty_block_columns(_build_code_col_map(ws, code_row), ICD_SUFFIXES)
+    for c in icd_cols:
+        for r in range(max(5, data_start_row), ws.max_row + 1):
+            cell = ws.cell(row=r, column=c)
             if cell.data_type == "f" or not isinstance(cell.value, str):
                 continue
             value = ICD10_THREE_CHAR_TOKEN.sub(
@@ -1830,14 +1868,14 @@ def annotate_workbook(file_bytes, issues_df, theluc_by_row, danhmucdenghi_by_row
             ws.cell(row=r, column=de_nghi_col).value = val
 
     # (2b) Chuẩn hóa mới (22/10/2026): CCCD đủ 12 ký tự dạng text (11 số → thêm 0 đầu);
-    # cột BL-DR bỏ chữ 'Loại' chỉ giữ số (vd 'Loại 1' → '1'). Chạy TRƯỚC các quy tắc tự sửa khác.
+    # các cột khối chuyên khoa (theo keyword) bỏ chữ 'Loại' chỉ giữ số (vd 'Loại 1' → '1'). Chạy TRƯỚC các quy tắc tự sửa khác.
     norm_key_cols = [c for code, c in col_map.items() if code in ("ho_ten", "dinh_danh_ca_nhan")]
     norm_last_row = find_last_data_row(ws, norm_key_cols, data_start_row) if norm_key_cols else ws.max_row
     code_by_col_norm = {c: code for code, c in col_map.items()}
     for r in range(data_start_row, norm_last_row + 1):
         if is_type_annotation_row(ws, r, col_map):
             continue
-        for c in [col_map.get("dinh_danh_ca_nhan")] + list(range(LOAI_COL_FIRST, LOAI_COL_LAST + 1)):
+        for c in [col_map.get("dinh_danh_ca_nhan")] + specialty_block_columns(col_map):
             if not c:
                 continue
             cell = ws.cell(row=r, column=c)
