@@ -88,7 +88,7 @@ DATE_FIELDS = ["ngay_kham", "ngay_sinh"]
 STRICT_TEXT_CATEGORY = {
     # code: (tên sheet tham chiếu, tên cột chứa giá trị hiển thị)
     "nghenghiep_code": ("NgheNghiep", "Nghề Nghiệp"),
-    "noi_cong_tac": ("NoiLamViec", "Nơi làm việc"),
+    "noi_cong_tac_id": ("NoiLamViec", "Nơi làm việc"),
 }
 
 STRICT_ID_CATEGORY = {
@@ -515,7 +515,7 @@ def compute_data_fixes_for_row(raw_by_code):
             cho ĐÚNG khối đó. Phân loại đang là 2-5 thì giữ nguyên, không tự điền gì.
       - sdt: phải đủ đúng 10 chữ số — không đúng 10 số (kể cả để trống) thì Cảnh báo và tự điền mặc
         định "0909002002" trong file tải về (xem SDT_DEFAULT_VALUE).
-      - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac' (cột R) đang trống → điền 'doi_tuong_kham'
+      - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac_id' (cột R) đang trống → điền 'doi_tuong_kham'
         (cột C) = 3.
       - 'doi_tuong_kham' (cột C) = 3 (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên) →
         điền cố định 'hinh_thuc_chi_tra_khamsk' (cột V) = "Ngân sách thành phố hỗ trợ" và
@@ -758,7 +758,7 @@ def compute_data_fixes_for_row(raw_by_code):
         if has_icd_value_final(sobo_c) or has_icd_value_final(xacdinh_c):
             fixes[tuchoi_c] = None
 
-    if blank("nghenghiep_code") or blank("noi_cong_tac"):
+    if blank("nghenghiep_code") or blank("noi_cong_tac_id"):
         fixes["doi_tuong_kham"] = 3
 
     # Quy tắc mới (Jo bổ sung): Đối tượng khám (cột C) = 3 → điền cố định Hình thức chi trả khám
@@ -1338,9 +1338,9 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
     # ---- danh mục theo TÊN (nghề nghiệp, nơi công tác) ----
     if code in STRICT_TEXT_CATEGORY:
         # Khi Đối tượng khám = 1 hoặc 2 (Sinh viên/học viên hoặc Người lao động chính thức),
-        # noi_cong_tac chỉ cần CÓ dữ liệu, KHÔNG đối chiếu danh mục NoiLamViec nữa (yêu cầu của Jo).
+        # noi_cong_tac_id chỉ cần CÓ dữ liệu, KHÔNG đối chiếu danh mục NoiLamViec nữa (yêu cầu của Jo).
         # Phần bắt buộc-không-trống được kiểm ở check_doi_tuong_rules().
-        if code == "noi_cong_tac" and row_ctx.get("_skip_noicongtac_catalog"):
+        if code == "noi_cong_tac_id" and row_ctx.get("_skip_noicongtac_catalog"):
             return issues
         sheet_name, _ = STRICT_TEXT_CATEGORY[code]
         ref = refs.get(sheet_name)
@@ -1467,13 +1467,13 @@ def check_specialty_blocks(raw_by_code, gioi_tinh_text):
 def check_doi_tuong_rules(raw_by_code):
     """Quy tắc theo Đối tượng khám (Jo bổ sung):
     Nếu doi_tuong_kham = 1 (Sinh viên, học viên) HOẶC = 2 (Người lao động chính thức theo pháp luật
-    ATVSLĐ) thì 3 ô bắt buộc không được để trống: nghenghiep_code, noi_cong_tac, noi_cong_tac_xa_phuong.
+    ATVSLĐ) thì 3 ô bắt buộc không được để trống: nghenghiep_code, noi_cong_tac_id, noi_cong_tac_xa_phuong.
     (doi_tuong_kham có thể chứa nhiều mã cách nhau dấu phẩy — chỉ cần có mã '1' hoặc '2' trong đó.)
     """
     issues = []
     dt_codes = [p.strip() for p in clean_ws(raw_by_code.get("doi_tuong_kham")).split(",") if p.strip()]
     if "1" in dt_codes or "2" in dt_codes:
-        for code in ("nghenghiep_code", "noi_cong_tac", "noi_cong_tac_xa_phuong"):
+        for code in ("nghenghiep_code", "noi_cong_tac_id", "noi_cong_tac_xa_phuong"):
             if is_blank(raw_by_code.get(code)):
                 issues.append({
                     "code": code,
@@ -1589,7 +1589,7 @@ def validate_workbook(file_bytes):
 
         row_ctx = {}
         raw_by_code = {}
-        # Đọc trước Đối tượng khám để check_cell biết có phải mã 1/2 không (ảnh hưởng cách xử lý noi_cong_tac)
+        # Đọc trước Đối tượng khám để check_cell biết có phải mã 1/2 không (ảnh hưởng cách xử lý noi_cong_tac_id)
         dt_def = col_defs_by_code.get("doi_tuong_kham")
         if dt_def:
             dt_codes = [p.strip() for p in clean_ws(ws.cell(row=r, column=dt_def["col"]).value).split(",") if p.strip()]
