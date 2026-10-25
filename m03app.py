@@ -8,6 +8,7 @@ import streamlit as st
 from validators import (
     validate_workbook, annotate_workbook, annotate_workbook_raw, SHEET_MAIN, DE_NGHI_DEFAULT_VALUE,
 )
+from template_d import normalize_to_template_d
 from merger import read_source_file, merge_mau03_files, default_unit_label, ensure_glucose_column_bytes
 
 st.set_page_config(page_title="Kiểm tra & ghép file Mẫu 03 - Medinet", page_icon="✅", layout="wide")
@@ -31,8 +32,23 @@ with tab_check:
 
     if uploaded is not None:
         try:
+            # Đưa file về đúng khuôn mẫu D (A..FY) theo keyword dù file upload theo mẫu cột nào
+            norm_bytes, norm_info = normalize_to_template_d(uploaded.getvalue())
+        except Exception as e:
+            st.error(f"Không chuẩn hóa được file về mẫu D: {e}")
+            st.stop()
+        if norm_info["changed"]:
+            msg = "Đã chuẩn hóa file về **mẫu D (cột A → FY)** theo keyword dòng mã."
+            if norm_info["renamed"]:
+                msg += " Đổi keyword: " + ", ".join(f"`{o}` → `{n}`" for o, n in norm_info["renamed"]) + "."
+            if norm_info["added"]:
+                msg += " Đã thêm cột còn thiếu: " + ", ".join(f"`{x}`" for x in norm_info["added"]) + "."
+            if norm_info["dropped"]:
+                msg += " Đã bỏ cột không thuộc mẫu D: " + ", ".join(f"{l} (`{c}`)" for l, c in norm_info["dropped"]) + "."
+            st.info(msg)
+        try:
             # Thêm cột "Đường máu lúc đói (mmol/L)" ngay sau "Đường máu" nếu file chưa có
-            data_bytes, glucose_added = ensure_glucose_column_bytes(uploaded.getvalue())
+            data_bytes, glucose_added = ensure_glucose_column_bytes(norm_bytes)
         except Exception as e:
             st.error(f"Không thêm được cột 'Đường máu lúc đói': {e}")
             st.stop()
@@ -162,8 +178,8 @@ with tab_check:
 - **Ô Kết luận (`danh_muc_de_nghi`)** phải là 1 trong 5 giá trị cố định (Bình thường hẹn khám định kỳ /
   Có yếu tố nguy cơ / Đã có bệnh mạn tính / Chuyển tuyến / Khác).
 - **Đối tượng khám = 1 (Sinh viên, học viên) hoặc = 2 (Người lao động chính thức)**: bắt buộc nhập
-  `nghenghiep_code`, `noi_cong_tac`, `noi_cong_tac_xa_phuong`; riêng `noi_cong_tac` lúc này chỉ cần
-  có dữ liệu, không đối chiếu danh mục `NoiLamViec` (với đối tượng khác thì `noi_cong_tac` không bắt
+  `nghenghiep_code`, `noi_cong_tac_id`, `noi_cong_tac_xa_phuong`; riêng `noi_cong_tac_id` lúc này chỉ cần
+  có dữ liệu, không đối chiếu danh mục `NoiLamViec` (với đối tượng khác thì `noi_cong_tac_id` không bắt
   buộc, có thể để trống).
 - **12 khối chuyên khoa ở tab Khám lâm sàng** (4 ô: chưa phát hiện bất thường / chẩn đoán sơ bộ /
   chẩn đoán xác định / phân loại — KHÔNG gồm khối Mắt, xem quy tắc riêng cho Mắt bên dưới): chọn
@@ -223,7 +239,7 @@ with tab_check:
   - **Giới tính Nữ (`gioi_tinh` = 2)** và cột DC, DD (`phukhoa_chandoansobo_icd`,
     `phukhoa_chandoanxacdinh_icd`) đều đang trống → điền DB (`phukhoa_chuaphathienbatthuong`) = **1**
     và DE (`phukhoa_phanloai`) = **1**.
-  - **`nghenghiep_code`** (cột Q) hoặc **`noi_cong_tac`** (cột R) đang trống → điền **`doi_tuong_kham`**
+  - **`nghenghiep_code`** (cột R) hoặc **`noi_cong_tac_id`** (cột S) đang trống → điền **`doi_tuong_kham`**
     (cột C) = **3**.
   - **`doi_tuong_kham`** (cột C) = **3** (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên)
     → điền cố định **`hinh_thuc_chi_tra_khamsk`** (cột V) = **"Ngân sách thành phố hỗ trợ"** và
@@ -242,6 +258,7 @@ with tab_check:
       và `mat_chandoanxacdinh_icd` đều đang trống thì điền thêm `mat_chandoansobo_icd` =
       **"H52.7"**. Nếu 2 ô chẩn đoán đã có ICD thật thì chỉ xoá trắng, không đè lên ICD có sẵn.
     - `mat_chandoansobo_icd`/`mat_chandoanxacdinh_icd` = 0 (giá trị rác) → chuyển **trống (null)**.
+- **Luôn xuất theo mẫu D (cột A → FY)**: dù file upload theo mẫu cột nào, công cụ sắp lại cột theo keyword cho đúng mẫu D, đổi `noi_cong_tac` → `noi_cong_tac_id`, tự thêm cột còn thiếu (để trống) và bỏ các cột ngoài mẫu (vd `nghenghiep_id`, `noi_cong_tac` ở GE/GF).
 - **Nhận diện cấu trúc file linh hoạt**: công cụ tự tìm dòng "mã field" (keyword) trong 15 dòng đầu
   của sheet thay vì cố định ở dòng 4 — chỉ cần file upload có dòng keyword giống file mẫu (dựa trên
   các mã quen thuộc như `ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`), dữ liệu sẽ được
