@@ -19,6 +19,7 @@ from openpyxl.formula import Tokenizer
 from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.worksheet.cell_range import CellRange, MultiCellRange
 
+from template_d import normalize_to_template_d, RENAMES
 from validators import (
     SHEET_MAIN,
     CODE_ROW_ANCHOR_FIELDS,
@@ -187,6 +188,9 @@ def read_source_file(file_bytes, filename, unit_label):
 
     label_row, code_row, data_start_row, layout_note = detect_layout_rows(ws)
     col_map = _build_code_col_map(ws, code_row)
+    for old_code, new_code in RENAMES.items():  # keyword mẫu cũ -> mẫu D (vd noi_cong_tac -> noi_cong_tac_id)
+        if old_code in col_map and new_code not in col_map:
+            col_map[new_code] = col_map[old_code]
 
     missing_anchor = REQUIRED_ANCHOR_FIELDS - set(col_map)
     if missing_anchor:
@@ -248,7 +252,8 @@ def merge_mau03_files(sources):
     base_col_map = base["col_map"]
     base_data_start_row = base["data_start_row"]
 
-    wb = openpyxl.load_workbook(BytesIO(base["file_bytes"]))  # không data_only — giữ định dạng để lưu lại
+    base_bytes, _norm_info = normalize_to_template_d(base["file_bytes"])  # nền luôn theo mẫu D (A..FY)
+    wb = openpyxl.load_workbook(BytesIO(base_bytes))  # không data_only — giữ định dạng để lưu lại
     ws = wb[SHEET_MAIN]
     added_fields = ensure_new_fields(wb, ws, base["code_row"])
     base_col_map = _build_code_col_map(ws, base["code_row"])
