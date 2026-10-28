@@ -178,6 +178,11 @@ REQUIRED_ANCHOR_FIELDS = CODE_ROW_ANCHOR_FIELDS  # {"ho_ten", "dinh_danh_ca_nhan
 TEMPLATE_XLSX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mau03_moi.xlsx")
 
 
+# Cột W 'Tình trạng thực hiện xét nghiệm': trống thì điền mặc định 3 (Từ chối xét nghiệm).
+XET_NGHIEM_FIELD = "tinhtrangthucnghiem_xetnghiem"
+XET_NGHIEM_DEFAULT = "3"
+
+
 def default_unit_label(filename):
     """Đoán tên đơn vị mặc định từ tên file, để người dùng sửa lại trên giao diện nếu cần."""
     return clean_ws(os.path.splitext(filename)[0])
@@ -305,6 +310,8 @@ def merge_mau03_files(sources):
         for code, col in base_col_map.items():
             cell = ws.cell(row=r, column=col)
             cell.value = values.get(code)
+            if code == XET_NGHIEM_FIELD and is_blank(cell.value):
+                cell.value = XET_NGHIEM_DEFAULT  # mặc định 3 khi trống (file mẫu cũ không có cột này)
             if isinstance(cell.value, str):
                 cell.data_type = "s"
         if cccd:
