@@ -351,8 +351,8 @@ with tab_merge:
 
                     if summary.get("blank_new_fields"):
                         st.info(
-                            "Các cột chỉ có ở mẫu mới, file cũ không có nên **để trống**, cần tự điền nếu bắt buộc: "
-                            + ", ".join(f"`{c}`" for c in summary["blank_new_fields"])
+                            "Cột chỉ có ở mẫu mới: `tinhtrangthucnghiem_xetnghiem` tự điền mặc định **3** khi trống; "
+                            "`denghi_chuyentuyen_ghiro` để trống."
                         )
 
                     if summary.get("added_fields"):
@@ -407,7 +407,7 @@ with tab_merge:
   của mẫu mới. File nguồn có thể là mẫu 3 cũ hoặc mẫu mới; thay mẫu mới khi Medinet cập nhật chỉ cần thay file này.
 - Keyword **`noi_cong_tac` (mẫu cũ) được coi là `noi_cong_tac_id` (mẫu mới)**: giá trị ô Nơi công tác (cột S)
   của file cũ được chép nguyên sang cột S của mẫu mới; cột phụ công thức `noi_cong_tac_id` (GD) của file cũ bị bỏ.
-- Cột chỉ có ở mẫu mới (`tinhtrangthucnghiem_xetnghiem`, `denghi_chuyentuyen_ghiro`): file cũ không có nên để trống.
+- Cột chỉ có ở mẫu mới: `tinhtrangthucnghiem_xetnghiem` (cột W) trống thì điền mặc định **3**; `denghi_chuyentuyen_ghiro` để trống.
 - Gộp dữ liệu bệnh nhân của **tất cả** file theo đúng thứ tự đã tải lên, đánh lại
   **STT liên tục** từ 1.
 - File nào **thiếu mã field bắt buộc** (`ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`) —
