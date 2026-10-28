@@ -290,8 +290,8 @@ with tab_merge:
         "Dùng khi có **nhiều file dữ liệu Mẫu 03** (ví dụ mỗi khóm/tổ/phường 1 file, cùng đúng khuôn "
         "mẫu Medinet) và muốn **gộp lại thành 1 file duy nhất** để chạy script Tampermonkey 1 lần cho "
         "cả khu vực, thay vì chạy tay từng file nhỏ. Các sheet danh mục (Nghề nghiệp, Nơi làm việc, "
-        "Tỉnh, Phường xã...) trong file kết quả lấy theo **file ĐẦU TIÊN** trong danh sách tải lên — "
-        "vì đây là danh mục dùng chung của Medinet, không phải dữ liệu riêng của từng đơn vị."
+        "Tỉnh, Phường xã...) trong file kết quả lấy theo **file mẫu 03 mới (cột A → FY)** đi kèm công cụ — "
+        "file cũ (mẫu 3 cũ) hay file mới đều ghép được, kết quả luôn xuất ra đúng mẫu mới."
     )
 
     merge_files = st.file_uploader(
@@ -349,6 +349,12 @@ with tab_merge:
                             for name, note in summary["layout_notes"]:
                                 st.warning(f"**{name}**: {note}")
 
+                    if summary.get("blank_new_fields"):
+                        st.info(
+                            "Các cột chỉ có ở mẫu mới, file cũ không có nên **để trống**, cần tự điền nếu bắt buộc: "
+                            + ", ".join(f"`{c}`" for c in summary["blank_new_fields"])
+                        )
+
                     if summary.get("added_fields"):
                         st.info("Đã thêm cột vào mẫu nền: " + ", ".join(summary["added_fields"]))
 
@@ -396,9 +402,13 @@ with tab_merge:
 - Đọc từng file theo **mã field** (không theo số cột) — dùng đúng cách nhận diện cấu trúc (dòng
   nhãn/dòng mã field/dòng dữ liệu) như tab "Kiểm tra file", nên vẫn ghép đúng dù cột ở 1 file nguồn
   có lệch vị trí đôi chút so với file nền.
-- **File đầu tiên trong danh sách tải lên là NỀN**: giữ nguyên định dạng, 4 dòng đầu và toàn bộ các
-  sheet danh mục (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`...).
-- Gộp dữ liệu bệnh nhân của **tất cả** file (kể cả file nền) theo đúng thứ tự đã tải lên, đánh lại
+- **Nền của file kết quả là mẫu 03 MỚI (`mau03_moi.xlsx`, cột A → FY)**: giữ nguyên định dạng, 4 dòng đầu và
+  toàn bộ các sheet danh mục (`DoiTuongKham`, `Tinh`, `PhuongXa`, `NgheNghiep`, `NoiLamViec`, `TienSuGiaDinh`...)
+  của mẫu mới. File nguồn có thể là mẫu 3 cũ hoặc mẫu mới; thay mẫu mới khi Medinet cập nhật chỉ cần thay file này.
+- Keyword **`noi_cong_tac` (mẫu cũ) được coi là `noi_cong_tac_id` (mẫu mới)**: giá trị ô Nơi công tác (cột S)
+  của file cũ được chép nguyên sang cột S của mẫu mới; cột phụ công thức `noi_cong_tac_id` (GD) của file cũ bị bỏ.
+- Cột chỉ có ở mẫu mới (`tinhtrangthucnghiem_xetnghiem`, `denghi_chuyentuyen_ghiro`): file cũ không có nên để trống.
+- Gộp dữ liệu bệnh nhân của **tất cả** file theo đúng thứ tự đã tải lên, đánh lại
   **STT liên tục** từ 1.
 - File nào **thiếu mã field bắt buộc** (`ho_ten`, `dinh_danh_ca_nhan`, `ngay_kham`, `gioi_tinh`) —
   ví dụ lỡ tải nhầm file của mẫu khác — sẽ **bị loại**, có báo lỗi rõ tên file, các file còn lại vẫn

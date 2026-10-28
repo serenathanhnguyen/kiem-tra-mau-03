@@ -211,8 +211,29 @@ assert N_COLS == column_index_from_string("FY")
 TEMPLATE_D_SET = {k for k in TEMPLATE_D_COLUMNS if k}
 SPACER_COL = 20  # cột T
 
-# Keyword mẫu cũ -> keyword mẫu D (chỉ đổi khi file chưa có keyword mới)
+# Keyword mẫu cũ -> keyword mẫu D.
 RENAMES = {"noi_cong_tac": "noi_cong_tac_id"}
+
+# Cột mẫu D mà mẫu 3 cũ không có -> khi ghép/chuẩn hóa file cũ thì để trống.
+NEW_TEMPLATE_ONLY_FIELDS = ("tinhtrangthucnghiem_xetnghiem", "denghi_chuyentuyen_ghiro")
+
+
+def apply_renames(code_to_col):
+    """Gộp keyword mẫu cũ vào keyword mẫu D trên dict {keyword: số cột}, sửa trực tiếp và trả về
+    danh sách [(keyword cũ, keyword mới)] đã đổi.
+
+    Mẫu 3 cũ có SẴN cả 'noi_cong_tac' (cột S — ô nhập thật) lẫn 'noi_cong_tac_id' (cột GD — cột phụ
+    công thức VLOOKUP). Mẫu mới thì ngược lại: 'noi_cong_tac_id' ở cột S là ô nhập thật còn
+    'noi_cong_tac' ở GF là cột phụ. Vì vậy khi file có CẢ HAI keyword thì lấy cột nằm BÊN TRÁI hơn
+    (ô nhập thật) làm 'noi_cong_tac_id'; chỉ có 'noi_cong_tac' thì đổi tên."""
+    renamed = []
+    for old, new in RENAMES.items():
+        if old not in code_to_col:
+            continue
+        if new not in code_to_col or code_to_col[old] < code_to_col[new]:
+            code_to_col[new] = code_to_col.pop(old)
+            renamed.append((old, new))
+    return renamed
 
 # Nhãn dòng 2 (nhãn) / dòng 3 (nhãn phụ) cho cột phải tự thêm. Sửa lại cho đúng nhãn thật của mẫu Medinet.
 # keyword: (nhãn, nhãn phụ)
@@ -277,11 +298,7 @@ def _template_layout(ws, code_row):
         code = clean_ws(ws.cell(row=code_row, column=c).value)
         if code and code not in src_codes:
             src_codes[code] = c
-    renamed = []
-    for old, new in RENAMES.items():
-        if old in src_codes and new not in src_codes:
-            src_codes[new] = src_codes.pop(old)
-            renamed.append((old, new))
+    renamed = apply_renames(src_codes)
     dst_to_src, added = {}, []
     for dst, code in enumerate(TEMPLATE_D_COLUMNS, start=1):
         if code and code in src_codes:

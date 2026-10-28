@@ -19,7 +19,7 @@ from openpyxl.formula import Tokenizer
 from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.worksheet.cell_range import CellRange, MultiCellRange
 
-from template_d import normalize_to_template_d, RENAMES
+from template_d import normalize_to_template_d, apply_renames, NEW_TEMPLATE_ONLY_FIELDS
 from validators import (
     SHEET_MAIN,
     CODE_ROW_ANCHOR_FIELDS,
@@ -173,6 +173,11 @@ def ensure_new_fields(wb, ws, code_row, fields=None):
 REQUIRED_ANCHOR_FIELDS = CODE_ROW_ANCHOR_FIELDS  # {"ho_ten", "dinh_danh_ca_nhan", "ngay_kham", "gioi_tinh"}
 
 
+# Mẫu 03 MỚI (cột A → FY) do Medinet cập nhật — luôn là NỀN của file ghép, để xuất đúng nhãn, danh mục,
+# validation của mẫu mới. Thiếu file này thì mới dùng file ĐẦU TIÊN (đã chuẩn hóa về mẫu D) làm nền.
+TEMPLATE_XLSX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mau03_moi.xlsx")
+
+
 def default_unit_label(filename):
     """Đoán tên đơn vị mặc định từ tên file, để người dùng sửa lại trên giao diện nếu cần."""
     return clean_ws(os.path.splitext(filename)[0])
@@ -188,9 +193,7 @@ def read_source_file(file_bytes, filename, unit_label):
 
     label_row, code_row, data_start_row, layout_note = detect_layout_rows(ws)
     col_map = _build_code_col_map(ws, code_row)
-    for old_code, new_code in RENAMES.items():  # keyword mẫu cũ -> mẫu D (vd noi_cong_tac -> noi_cong_tac_id)
-        if old_code in col_map and new_code not in col_map:
-            col_map[new_code] = col_map[old_code]
+    apply_renames(col_map)  # keyword mẫu cũ -> mẫu D: noi_cong_tac -> noi_cong_tac_id (kể cả khi file có sẵn cột phụ noi_cong_tac_id)
 
     missing_anchor = REQUIRED_ANCHOR_FIELDS - set(col_map)
     if missing_anchor:
@@ -248,15 +251,18 @@ def merge_mau03_files(sources):
     if len(sources) < 2:
         raise ValueError("Cần ít nhất 2 file để ghép.")
 
-    base = sources[0]
-    base_col_map = base["col_map"]
-    base_data_start_row = base["data_start_row"]
-
-    base_bytes, _norm_info = normalize_to_template_d(base["file_bytes"])  # nền luôn theo mẫu D (A..FY)
+    if os.path.exists(TEMPLATE_XLSX):
+        with open(TEMPLATE_XLSX, "rb") as fh:
+            base_raw, base_name = fh.read(), os.path.basename(TEMPLATE_XLSX)
+    else:
+        base_raw, base_name = sources[0]["file_bytes"], sources[0]["filename"]
+    base_bytes, _norm_info = normalize_to_template_d(base_raw)  # nền luôn theo mẫu D (A..FY)
     wb = openpyxl.load_workbook(BytesIO(base_bytes))  # không data_only — giữ định dạng để lưu lại
     ws = wb[SHEET_MAIN]
-    added_fields = ensure_new_fields(wb, ws, base["code_row"])
-    base_col_map = _build_code_col_map(ws, base["code_row"])
+    _lbl, base_code_row, base_data_start_row, _note = detect_layout_rows(ws)
+    base = {"code_row": base_code_row}
+    added_fields = ensure_new_fields(wb, ws, base_code_row)
+    base_col_map = _build_code_col_map(ws, base_code_row)
 
     # Tắt khoá bảo vệ (Protect Sheet) mang theo từ file nền — cùng lỗi và cùng cách vá như
     # annotate_workbook() trong validators.py: không tắt thì Excel tự ẩn/xám bớt nút Home/Filter
@@ -280,9 +286,11 @@ def merge_mau03_files(sources):
             ws.cell(row=r, column=c).value = None
 
     field_gaps = []
+    new_only = set(NEW_TEMPLATE_ONLY_FIELDS)
     all_rows = []  # (unit_label, filename, ho_ten, cccd, values)
     for src in sources:
-        gaps = tuple(sorted(set(base_col_map) - set(src["col_map"])))
+        # Cột chỉ có ở mẫu mới: file mẫu cũ thiếu là đương nhiên, để trống — không tính là cảnh báo.
+        gaps = tuple(sorted(set(base_col_map) - set(src["col_map"]) - new_only))
         if gaps:
             field_gaps.append((src["filename"], gaps))
         for row in src["rows"]:
@@ -339,6 +347,8 @@ def merge_mau03_files(sources):
     wb.save(out)
 
     summary = {
+        "base_template": base_name,
+        "blank_new_fields": [c for c in NEW_TEMPLATE_ONLY_FIELDS if c in base_col_map],
         "added_fields": added_fields,
         "total_rows": len(all_rows),
         "per_file": [(s["filename"], s["unit_label"], len(s["rows"])) for s in sources],
