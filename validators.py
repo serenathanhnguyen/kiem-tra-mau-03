@@ -88,7 +88,7 @@ DATE_FIELDS = ["ngay_kham", "ngay_sinh"]
 STRICT_TEXT_CATEGORY = {
     # code: (tên sheet tham chiếu, tên cột chứa giá trị hiển thị)
     "nghenghiep_code": ("NgheNghiep", "Nghề Nghiệp"),
-    "noi_cong_tac_id": ("NoiLamViec", "Nơi làm việc"),
+    "noi_cong_tac": ("NoiLamViec", "Nơi làm việc"),
 }
 
 STRICT_ID_CATEGORY = {
@@ -107,6 +107,34 @@ PHONE_RE = re.compile(r"^0\d{9,10}$")
 # đủ 10 số).
 SDT_10_RE = re.compile(r"^\d{10}$")
 SDT_DEFAULT_VALUE = "0909002002"
+# SĐT ngắn hơn 8 số (quá thiếu để đoán) → thay bằng giá trị này; 8-9 số thì bù số 0 phía trước.
+SDT_SHORT_VALUE = "0902002002"
+SDT_MIN_PAD_LEN = 8
+
+
+def normalize_sdt(raw_value):
+    """Chuẩn hóa SĐT thành chuỗi 10 số. Trả về (giá trị, đã_thêm_số_0).
+    - Đủ 10 số → giữ nguyên.
+    - Toàn chữ số, 8-9 số (thường do Excel mất số 0 đầu) → thêm số 0 phía trước cho đủ 10.
+    - Toàn chữ số nhưng ngắn hơn 8 số → SDT_SHORT_VALUE.
+    - Trống / thừa số / lẫn ký tự khác → SDT_DEFAULT_VALUE.
+    Số lưu dạng số (903123456 hoặc 903123456.0) được đổi sang text trước khi xử lý."""
+    if isinstance(raw_value, bool):
+        text = ""
+    elif isinstance(raw_value, (int, float, Decimal)):
+        try:
+            text = str(int(raw_value)) if raw_value == int(raw_value) else ""
+        except (ValueError, OverflowError):
+            text = ""
+    else:
+        text = re.sub(r"\s+", "", clean_ws(raw_value))  # bỏ khoảng trắng giữa các số
+    if SDT_10_RE.match(text):
+        return text, False
+    if text.isascii() and text.isdigit() and len(text) < 10:
+        if len(text) < SDT_MIN_PAD_LEN:
+            return SDT_SHORT_VALUE, False
+        return text.zfill(10), True
+    return SDT_DEFAULT_VALUE, False
 
 NBSP_CHARS = [
     "\xa0", "​", "﻿", " ", " ",   # NBSP, zero-width space, BOM, figure space, narrow NBSP
@@ -515,7 +543,7 @@ def compute_data_fixes_for_row(raw_by_code):
             cho ĐÚNG khối đó. Phân loại đang là 2-5 thì giữ nguyên, không tự điền gì.
       - sdt: phải đủ đúng 10 chữ số — không đúng 10 số (kể cả để trống) thì Cảnh báo và tự điền mặc
         định "0909002002" trong file tải về (xem SDT_DEFAULT_VALUE).
-      - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac_id' (cột R) đang trống → điền 'doi_tuong_kham'
+      - 'nghenghiep_code' (cột Q) hoặc 'noi_cong_tac' (cột R) đang trống → điền 'doi_tuong_kham'
         (cột C) = 3.
       - 'doi_tuong_kham' (cột C) = 3 (kể cả trường hợp vừa được tự điền = 3 ở quy tắc ngay trên) →
         điền cố định 'hinh_thuc_chi_tra_khamsk' (cột V) = "Ngân sách thành phố hỗ trợ" và
@@ -758,7 +786,7 @@ def compute_data_fixes_for_row(raw_by_code):
         if has_icd_value_final(sobo_c) or has_icd_value_final(xacdinh_c):
             fixes[tuchoi_c] = None
 
-    if blank("nghenghiep_code") or blank("noi_cong_tac_id"):
+    if blank("nghenghiep_code") or blank("noi_cong_tac"):
         fixes["doi_tuong_kham"] = 3
 
     # Quy tắc mới (Jo bổ sung): Đối tượng khám (cột C) = 3 → điền cố định Hình thức chi trả khám
@@ -772,8 +800,10 @@ def compute_data_fixes_for_row(raw_by_code):
 
     # Quy tắc mới của Jo: 'sdt' phải đủ đúng 10 chữ số — không đúng 10 số (kể cả để trống, thiếu/
     # thừa số, lẫn ký tự khác) thì tự điền giá trị mặc định (đúng nguyên văn theo yêu cầu của Jo).
-    if not SDT_10_RE.match(val("sdt")):
-        fixes["sdt"] = SDT_DEFAULT_VALUE
+    # Thiếu số (chỉ gồm chữ số, < 10 số) → thêm số 0 phía trước cho đủ 10 số (xem normalize_sdt).
+    sdt_new, _padded = normalize_sdt(raw_by_code.get("sdt"))
+    if sdt_new != val("sdt"):
+        fixes["sdt"] = sdt_new
 
     return fixes
 
@@ -1251,7 +1281,18 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
     # Quy tắc mới của Jo: phải đủ ĐÚNG 10 chữ số — không đúng 10 số (thiếu/thừa số, lẫn ký tự khác)
     # thì Cảnh báo (không chặn Lưu) và hệ thống tự điền giá trị mặc định trong file tải về.
     if code == "sdt":
-        if not SDT_10_RE.match(text):
+        sdt_new, padded = normalize_sdt(raw_value)
+        if padded:
+            issues.append({
+                "level": "Cảnh báo",
+                "message": f"'{text}' thiếu số — hệ thống sẽ tự thêm số 0 phía trước thành '{sdt_new}' trong file tải về",
+            })
+        elif sdt_new == SDT_SHORT_VALUE and text:
+            issues.append({
+                "level": "Cảnh báo",
+                "message": f"'{text}' ngắn hơn {SDT_MIN_PAD_LEN} số — hệ thống sẽ tự điền '{SDT_SHORT_VALUE}' trong file tải về",
+            })
+        elif not SDT_10_RE.match(text):
             issues.append({
                 "level": "Cảnh báo",
                 "message": f"'{text}' phải đủ 10 chữ số — hệ thống sẽ tự điền mặc định '{SDT_DEFAULT_VALUE}' trong file tải về",
@@ -1338,9 +1379,9 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
     # ---- danh mục theo TÊN (nghề nghiệp, nơi công tác) ----
     if code in STRICT_TEXT_CATEGORY:
         # Khi Đối tượng khám = 1 hoặc 2 (Sinh viên/học viên hoặc Người lao động chính thức),
-        # noi_cong_tac_id chỉ cần CÓ dữ liệu, KHÔNG đối chiếu danh mục NoiLamViec nữa (yêu cầu của Jo).
+        # noi_cong_tac chỉ cần CÓ dữ liệu, KHÔNG đối chiếu danh mục NoiLamViec nữa (yêu cầu của Jo).
         # Phần bắt buộc-không-trống được kiểm ở check_doi_tuong_rules().
-        if code == "noi_cong_tac_id" and row_ctx.get("_skip_noicongtac_catalog"):
+        if code == "noi_cong_tac" and row_ctx.get("_skip_noicongtac_catalog"):
             return issues
         sheet_name, _ = STRICT_TEXT_CATEGORY[code]
         ref = refs.get(sheet_name)
@@ -1467,13 +1508,13 @@ def check_specialty_blocks(raw_by_code, gioi_tinh_text):
 def check_doi_tuong_rules(raw_by_code):
     """Quy tắc theo Đối tượng khám (Jo bổ sung):
     Nếu doi_tuong_kham = 1 (Sinh viên, học viên) HOẶC = 2 (Người lao động chính thức theo pháp luật
-    ATVSLĐ) thì 3 ô bắt buộc không được để trống: nghenghiep_code, noi_cong_tac_id, noi_cong_tac_xa_phuong.
+    ATVSLĐ) thì 3 ô bắt buộc không được để trống: nghenghiep_code, noi_cong_tac, noi_cong_tac_xa_phuong.
     (doi_tuong_kham có thể chứa nhiều mã cách nhau dấu phẩy — chỉ cần có mã '1' hoặc '2' trong đó.)
     """
     issues = []
     dt_codes = [p.strip() for p in clean_ws(raw_by_code.get("doi_tuong_kham")).split(",") if p.strip()]
     if "1" in dt_codes or "2" in dt_codes:
-        for code in ("nghenghiep_code", "noi_cong_tac_id", "noi_cong_tac_xa_phuong"):
+        for code in ("nghenghiep_code", "noi_cong_tac", "noi_cong_tac_xa_phuong"):
             if is_blank(raw_by_code.get(code)):
                 issues.append({
                     "code": code,
@@ -1589,7 +1630,7 @@ def validate_workbook(file_bytes):
 
         row_ctx = {}
         raw_by_code = {}
-        # Đọc trước Đối tượng khám để check_cell biết có phải mã 1/2 không (ảnh hưởng cách xử lý noi_cong_tac_id)
+        # Đọc trước Đối tượng khám để check_cell biết có phải mã 1/2 không (ảnh hưởng cách xử lý noi_cong_tac)
         dt_def = col_defs_by_code.get("doi_tuong_kham")
         if dt_def:
             dt_codes = [p.strip() for p in clean_ws(ws.cell(row=r, column=dt_def["col"]).value).split(",") if p.strip()]
