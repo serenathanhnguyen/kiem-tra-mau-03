@@ -107,12 +107,16 @@ PHONE_RE = re.compile(r"^0\d{9,10}$")
 # đủ 10 số).
 SDT_10_RE = re.compile(r"^\d{10}$")
 SDT_DEFAULT_VALUE = "0909002002"
+# SĐT ngắn hơn 8 số (quá thiếu để đoán) → thay bằng giá trị này; 8-9 số thì bù số 0 phía trước.
+SDT_SHORT_VALUE = "0902002002"
+SDT_MIN_PAD_LEN = 8
 
 
 def normalize_sdt(raw_value):
     """Chuẩn hóa SĐT thành chuỗi 10 số. Trả về (giá trị, đã_thêm_số_0).
     - Đủ 10 số → giữ nguyên.
-    - Toàn chữ số nhưng THIẾU (1-9 số, thường do Excel mất số 0 đầu) → thêm số 0 phía trước cho đủ 10.
+    - Toàn chữ số, 8-9 số (thường do Excel mất số 0 đầu) → thêm số 0 phía trước cho đủ 10.
+    - Toàn chữ số nhưng ngắn hơn 8 số → SDT_SHORT_VALUE.
     - Trống / thừa số / lẫn ký tự khác → SDT_DEFAULT_VALUE.
     Số lưu dạng số (903123456 hoặc 903123456.0) được đổi sang text trước khi xử lý."""
     if isinstance(raw_value, bool):
@@ -127,6 +131,8 @@ def normalize_sdt(raw_value):
     if SDT_10_RE.match(text):
         return text, False
     if text.isascii() and text.isdigit() and len(text) < 10:
+        if len(text) < SDT_MIN_PAD_LEN:
+            return SDT_SHORT_VALUE, False
         return text.zfill(10), True
     return SDT_DEFAULT_VALUE, False
 
@@ -1280,6 +1286,11 @@ def check_cell(code, raw_value, col_defs_by_code, refs, row_ctx):
             issues.append({
                 "level": "Cảnh báo",
                 "message": f"'{text}' thiếu số — hệ thống sẽ tự thêm số 0 phía trước thành '{sdt_new}' trong file tải về",
+            })
+        elif sdt_new == SDT_SHORT_VALUE and text:
+            issues.append({
+                "level": "Cảnh báo",
+                "message": f"'{text}' ngắn hơn {SDT_MIN_PAD_LEN} số — hệ thống sẽ tự điền '{SDT_SHORT_VALUE}' trong file tải về",
             })
         elif not SDT_10_RE.match(text):
             issues.append({
